@@ -53,7 +53,6 @@ export function CreateTaskForm({ assignableUsers }: CreateTaskFormProps) {
         addTask(state.task);
         formRef.current?.reset();
         setDeadline(undefined);
-        // TODO: Clear conceptual attachments list if we implement local state for them
       } else if (!state.success) {
         toast({
           title: "Error Creating Task",
@@ -133,7 +132,7 @@ export function CreateTaskForm({ assignableUsers }: CreateTaskFormProps) {
           {state.errors?.priority && <p className="text-sm text-destructive mt-1">{state.errors.priority.join(", ")}</p>}
         </div>
       </div>
-      
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <Label htmlFor="assignedUserId">Assign To</Label>
@@ -144,7 +143,7 @@ export function CreateTaskForm({ assignableUsers }: CreateTaskFormProps) {
             <SelectContent>
               {assignableUsers.length === 0 && <SelectItem value="no_users_available" disabled>No assignable users</SelectItem>}
               {assignableUsers.map(user => (
-                <SelectItem key={user.id} value={user.email}>
+                <SelectItem key={user.id} value={String(user.id)}>
                   {user.firstName} {user.lastName} ({user.email})
                 </SelectItem>
               ))}
@@ -156,13 +155,13 @@ export function CreateTaskForm({ assignableUsers }: CreateTaskFormProps) {
           <Label htmlFor="timerDuration">Timer Duration (minutes)</Label>
           <div className="relative">
             <Timer className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input 
-              id="timerDuration" 
-              name="timerDuration" 
-              type="number" 
-              placeholder="e.g., 60" 
+            <Input
+              id="timerDuration"
+              name="timerDuration"
+              type="number"
+              placeholder="e.g., 60"
               min="1"
-              className="pl-10" 
+              className="pl-10"
               required
             />
           </div>
@@ -179,7 +178,7 @@ export function CreateTaskForm({ assignableUsers }: CreateTaskFormProps) {
         <Input id="attachments-admin" name="attachments" type="file" className="sr-only" disabled multiple/>
         <p className="text-xs text-muted-foreground mt-1">Actual file uploading is not implemented in this prototype. This section is for UI demonstration.</p>
       </div>
-      
+
       {state.errors?._form && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />

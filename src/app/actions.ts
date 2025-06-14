@@ -135,7 +135,10 @@ const AdminCreateTaskFormSchema = z.object({
       return date;
     }),
   priority: z.enum(["Low", "Medium", "High"] as [TaskPriority, ...TaskPriority[]]),
-  assignedUserId: z.string({ required_error: "Assignee is required." }).min(1,"An employee must be assigned."),
+  assignedUserId: z.coerce.number({
+    required_error: "Assignee is required.",
+    invalid_type_error: "An employee must be assigned."
+  }).min(1, "An employee must be assigned."),
   timerDuration: z.string({ required_error: "Timer duration is required." })
     .min(1, "Timer duration is required.")
     .refine(val => {
@@ -183,7 +186,16 @@ export async function adminCreateTaskAction(
   
   const { title, description, deadline, priority, assignedUserId, timerDuration } = validatedFields.data;
 
-  console.log("adminCreateTaskAction: assignedUserId from form data:", assignedUserId);
+  const assignedUserIdNumber = Number(assignedUserId);
+  if (isNaN(assignedUserIdNumber)) {
+    return {
+      success: false,
+      message: "Invalid assigned user ID provided.",
+      errors: { assignedUserId: ["Assigned user ID must be a number."] },
+    };
+  }
+
+  console.log("adminCreateTaskAction: Assigned user ID for lookup:", assignedUserIdNumber);
 
   const cookieHeader = (await headers()).get("cookie") || undefined;
   const currentUser = await userAPI.verifySession(cookieHeader);
@@ -198,7 +210,7 @@ export async function adminCreateTaskAction(
 
   const allUsers = await userAPI.getAllUsers(cookieHeader);
   console.log("adminCreateTaskAction: allUsers from backend:", allUsers);
-  const assignee = allUsers.find(user => user.email === assignedUserId);
+  const assignee = allUsers.find(user => Number(user.id) === assignedUserIdNumber);
   console.log("adminCreateTaskAction: found assignee:", assignee);
    if (!assignee) { 
     return {

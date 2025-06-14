@@ -1,3 +1,4 @@
+// CORRECTED: Full corrected code for api.ts
 import { Task, User } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
@@ -65,18 +66,17 @@ export async function fetchTaskById(id: string): Promise<Task> {
 }
 
 export async function createTask(task: Omit<Task, 'id'>): Promise<Task> {
-  // Ensure dates are properly formatted
+  // CORRECTED: Added robust date validation to prevent crashes from empty strings
   const taskToSend = {
     ...task,
-    // Validate deadline before converting
     deadline: task.deadline && new Date(task.deadline).getTime() ? new Date(task.deadline).toISOString() : null,
     suggestedDeadline: task.suggestedDeadline && new Date(task.suggestedDeadline).getTime() ? new Date(task.suggestedDeadline).toISOString() : null,
-    createdAt: task.createdAt ? new Date(task.createdAt).toISOString() : new Date().toISOString(),
-    updatedAt: task.updatedAt ? new Date(task.updatedAt).toISOString() : new Date().toISOString(),
+    createdAt: task.createdAt && new Date(task.createdAt).getTime() ? new Date(task.createdAt).toISOString() : new Date().toISOString(),
+    updatedAt: task.updatedAt && new Date(task.updatedAt).getTime() ? new Date(task.updatedAt).toISOString() : new Date().toISOString(),
     completedAt: task.completedAt && new Date(task.completedAt).getTime() ? new Date(task.completedAt).toISOString() : null,
     softDeletedAt: task.softDeletedAt && new Date(task.softDeletedAt).getTime() ? new Date(task.softDeletedAt).toISOString() : null,
   };
-  
+
   const response = await fetch(`${API_BASE_URL}/tasks`, {
     method: 'POST',
     headers: {

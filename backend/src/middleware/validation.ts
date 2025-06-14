@@ -49,8 +49,8 @@ export const validateCreateTask = (req: Request, res: Response, next: NextFuncti
       throw new ValidationError('Progress percentage must be a number between 0 and 100', 'progressPercentage');
     }
 
-    if (taskData.projectId !== undefined && typeof taskData.projectId !== 'number') {
-      throw new ValidationError('Project ID must be a number', 'projectId');
+    if (taskData.projectId !== undefined && taskData.projectId !== null && typeof taskData.projectId !== 'number') {
+      throw new ValidationError('Project ID must be a number or null', 'projectId');
     }
 
     if (taskData.assignedUserId !== undefined && typeof taskData.assignedUserId !== 'number') {
@@ -137,8 +137,8 @@ export const validateUpdateTask = (req: Request, res: Response, next: NextFuncti
       throw new ValidationError('Progress percentage must be a number between 0 and 100', 'progressPercentage');
     }
 
-    if (taskData.projectId !== undefined && typeof taskData.projectId !== 'number') {
-      throw new ValidationError('Project ID must be a number', 'projectId');
+    if (taskData.projectId !== undefined && taskData.projectId !== null && typeof taskData.projectId !== 'number') {
+      throw new ValidationError('Project ID must be a number or null', 'projectId');
     }
 
     if (taskData.assignedUserId !== undefined && typeof taskData.assignedUserId !== 'number') {

@@ -4,11 +4,10 @@
 =============================================================================
  This schema is fully idempotent and can be run multiple times without error.
  It ensures a clean and correct database state by:
- 1. Dropping all objects with CASCADE to handle complex dependencies.
- 2. Using "IF NOT EXISTS" for all tables, indexes, and extensions.
- 3. Safely creating custom ENUM types only if they don't already exist.
- 4. Using "CREATE OR REPLACE" for functions and views.
- 5. Using the "DROP TRIGGER IF EXISTS" pattern for triggers.
+ 1. Using "IF NOT EXISTS" for all tables, indexes, and extensions.
+ 2. Safely creating custom ENUM types only if they don't already exist.
+ 3. Using "CREATE OR REPLACE" for functions and views.
+ 4. Using the "DROP TRIGGER IF EXISTS" pattern for triggers.
 =============================================================================
 */
 
@@ -24,9 +23,28 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- =============================================================================
 -- -- ENUMERATED TYPES (Idempotent Creation)
+-- -- UPDATED: Added 'Pending Approval', 'Needs Changes', 'Rejected' and aligned 'Completed' status.
 -- =============================================================================
 
-DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'task_status') THEN CREATE TYPE task_status AS ENUM ('To Do', 'In Progress', 'In Review', 'Done', 'Archived'); END IF; END $$;
+-- First, create a temporary type with the new values
+DO $$ 
+BEGIN
+    -- Drop the existing type if it exists
+    DROP TYPE IF EXISTS task_status CASCADE;
+    
+    -- Create the new type with all values
+    CREATE TYPE task_status AS ENUM (
+        'Pending Approval',
+        'To Do',
+        'In Progress',
+        'In Review',
+        'Needs Changes',
+        'Completed',
+        'Rejected',
+        'Archived'
+    );
+END $$;
+
 DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'task_priority') THEN CREATE TYPE task_priority AS ENUM ('Low', 'Medium', 'High', 'Urgent'); END IF; END $$;
 DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN CREATE TYPE user_role AS ENUM ('Admin', 'Manager', 'User'); END IF; END $$;
 DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'notification_type') THEN CREATE TYPE notification_type AS ENUM ('Task Assigned', 'Comment Mention', 'Status Change', 'Deadline Reminder'); END IF; END $$;
@@ -72,7 +90,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     title VARCHAR(255) NOT NULL,
     description TEXT,
-    status task_status NOT NULL DEFAULT 'To Do',
+    status task_status NOT NULL DEFAULT 'Pending Approval', -- UPDATED: Default to 'Pending Approval' for new tasks from users
     priority task_priority NOT NULL DEFAULT 'Medium',
     deadline TIMESTAMPTZ,
     progress_percentage INTEGER DEFAULT 0,
@@ -81,6 +99,9 @@ CREATE TABLE IF NOT EXISTS tasks (
     assigner_id INTEGER NOT NULL,
     assigned_user_id INTEGER,
     updated_by INTEGER,
+    -- NEW: Added fields for suggested values from the user submission form
+    suggested_priority task_priority,
+    suggested_deadline TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMPTZ,
@@ -211,7 +232,7 @@ LEFT JOIN
 JOIN
     users u_assigner ON t.assigner_id = u_assigner.id
 WHERE
-    t.status NOT IN ('Done', 'Archived')
+    t.status NOT IN ('Completed', 'Archived', 'Rejected')
     AND t.soft_deleted_at IS NULL;
 
 CREATE OR REPLACE VIEW task_dashboard AS

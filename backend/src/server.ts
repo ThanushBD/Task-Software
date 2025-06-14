@@ -111,9 +111,8 @@ app.use((req, res, next) => {
 });
 
 // API Routes
-app.use('/api/auth', authRoutes); // Add auth routes
+app.use('/api/auth', authRoutes);
 app.use('/api/tasks', taskRoutes);
-app.use('/api', authRoutes); // Also mount auth routes under /api for /api/users endpoint
 
 // Health check endpoints
 app.get('/health', (req, res) => {

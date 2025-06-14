@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useActionState } from "react";
@@ -65,18 +64,15 @@ export function CreateTaskForm({ assignableUsers }: CreateTaskFormProps) {
     }
   }, [state, toast, addTask]);
 
-  if (!currentUser || currentUser.role !== 'admin') {
+  if (!currentUser || currentUser.role !== 'Admin') {
     return <p className="text-destructive">Access denied. You must be an admin to create tasks.</p>;
   }
 
   return (
     <form action={formAction} ref={formRef} className="space-y-6">
-      <input type="hidden" name="assignerId" value={currentUser.id} />
-      <input type="hidden" name="assignerName" value={currentUser.name || currentUser.email} />
-
       <div className="p-2 mb-4 text-sm rounded-md bg-muted text-muted-foreground flex items-center">
         <UserCheck className="mr-2 h-4 w-4" />
-        Assigning task as: <strong className="ml-1">{currentUser.name || currentUser.email}</strong>
+        Assigning task as: <strong className="ml-1">{currentUser.firstName} {currentUser.lastName}</strong>
       </div>
 
       <div>
@@ -148,8 +144,8 @@ export function CreateTaskForm({ assignableUsers }: CreateTaskFormProps) {
             <SelectContent>
               {assignableUsers.length === 0 && <SelectItem value="no_users_available" disabled>No assignable users</SelectItem>}
               {assignableUsers.map(user => (
-                <SelectItem key={user.id} value={user.id}>
-                  {user.name} ({user.email})
+                <SelectItem key={user.id} value={user.email}>
+                  {user.firstName} {user.lastName} ({user.email})
                 </SelectItem>
               ))}
             </SelectContent>
@@ -170,7 +166,7 @@ export function CreateTaskForm({ assignableUsers }: CreateTaskFormProps) {
               required
             />
           </div>
-          {state.errors?.timerDuration && <p className="text-sm text-destructive mt-1">{state.errors.timerDuration.join(", ")}</p>}
+          {state.errors?.timerDuration && <p className="text-sm text-destructive mt-1\">{state.errors.timerDuration.join(", ")}</p>}
         </div>
       </div>
 
@@ -191,8 +187,6 @@ export function CreateTaskForm({ assignableUsers }: CreateTaskFormProps) {
           <AlertDescription>{state.errors._form.join(", ")}</AlertDescription>
         </Alert>
       )}
-       {state.errors?.assignerId && <p className="text-sm text-destructive mt-1">Assigner ID error: {state.errors.assignerId.join(", ")}</p>}
-       {state.errors?.assignerName && <p className="text-sm text-destructive mt-1">Assigner Name error: {state.errors.assignerName.join(", ")}</p>}
 
       <div className="flex justify-end pt-2">
         <SubmitButton />

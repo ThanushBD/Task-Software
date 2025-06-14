@@ -1,251 +1,253 @@
 // middleware/validation.ts
 import { Request, Response, NextFunction } from 'express';
-import { TaskStatus, TaskPriority, CreateTaskRequest, UpdateTaskRequest } from '../types/task';
+import { CreateTaskRequest, UpdateTaskRequest, TaskStatus, TaskPriority } from '../types/task';
+import { ValidationError } from '../utils/errors';
 
-export class ValidationError extends Error {
-  constructor(message: string, public field?: string) {
-    super(message);
-    this.name = 'ValidationError';
-  }
-}
+const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/png', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
-const VALID_STATUSES: TaskStatus[] = ['To Do', 'In Progress', 'In Review', 'Completed', 'Cancelled'];
-const VALID_PRIORITIES: TaskPriority[] = ['Low', 'Medium', 'High', 'Critical'];
-const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
-const ALLOWED_FILE_TYPES = [
-  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-  'application/pdf', 'text/plain', 'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-];
-
-function isValidDate(dateString: string): boolean {
-  const date = new Date(dateString);
-  return !isNaN(date.getTime()) && date.getTime() > Date.now();
-}
-
-function isValidUUID(uuid: string): boolean {
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-  return uuidRegex.test(uuid);
-}
-
-function sanitizeString(str: string): string {
-  return str.trim().replace(/\s+/g, ' ');
-}
+// Remove invalid status and priority values
+const VALID_TASK_STATUSES = ['Pending Approval', 'To Do', 'In Progress', 'In Review', 'Needs Changes', 'Completed', 'Rejected', 'Archived'];
+const VALID_TASK_PRIORITIES = ['Low', 'Medium', 'High', 'Urgent'];
 
 export const validateCreateTask = (req: Request, res: Response, next: NextFunction) => {
   try {
-    const body: CreateTaskRequest = req.body;
+    const taskData: CreateTaskRequest = req.body;
 
-    // Required fields validation
-    if (!body.title || typeof body.title !== 'string') {
-      throw new ValidationError('Title is required and must be a string', 'title');
-    }
-    if (body.title.trim().length === 0) {
-      throw new ValidationError('Title cannot be empty', 'title');
-    }
-    if (body.title.length > 255) {
-      throw new ValidationError('Title must be less than 255 characters', 'title');
+    // Validate required fields
+    if (!taskData.title || typeof taskData.title !== 'string' || taskData.title.trim().length === 0) {
+      throw new ValidationError('Title is required and must be a non-empty string', 'title');
     }
 
-    if (!body.deadline || typeof body.deadline !== 'string') {
-      throw new ValidationError('Deadline is required and must be a valid ISO date string', 'deadline');
-    }
-    if (!isValidDate(body.deadline)) {
-      throw new ValidationError('Deadline must be a future date', 'deadline');
+    if (!taskData.assignerId || typeof taskData.assignerId !== 'number') {
+      throw new ValidationError('Assigner ID is required and must be a number', 'assignerId');
     }
 
-    if (!body.assignerId || typeof body.assignerId !== 'string') {
-      throw new ValidationError('Assigner ID is required', 'assignerId');
-    }
-    if (!body.assignerName || typeof body.assignerName !== 'string') {
-      throw new ValidationError('Assigner name is required', 'assignerName');
-    }
-
-    // Optional fields validation
-    if (body.description && typeof body.description !== 'string') {
+    // Validate optional fields
+    if (taskData.description !== undefined && typeof taskData.description !== 'string') {
       throw new ValidationError('Description must be a string', 'description');
     }
 
-    if (body.status && !VALID_STATUSES.includes(body.status)) {
-      throw new ValidationError(`Status must be one of: ${VALID_STATUSES.join(', ')}`, 'status');
+    if (taskData.status !== undefined && !VALID_TASK_STATUSES.includes(taskData.status)) {
+      throw new ValidationError('Invalid status value', 'status');
     }
 
-    if (body.priority && !VALID_PRIORITIES.includes(body.priority)) {
-      throw new ValidationError(`Priority must be one of: ${VALID_PRIORITIES.join(', ')}`, 'priority');
+    if (taskData.priority !== undefined && !VALID_TASK_PRIORITIES.includes(taskData.priority)) {
+      throw new ValidationError('Invalid priority value', 'priority');
     }
 
-    if (body.timerDuration && (typeof body.timerDuration !== 'number' || body.timerDuration < 0)) {
-      throw new ValidationError('Timer duration must be a non-negative number', 'timerDuration');
+    if (taskData.deadline !== undefined) {
+      const date = new Date(taskData.deadline);
+      if (isNaN(date.getTime())) {
+        throw new ValidationError('Deadline must be a valid date', 'deadline');
+      }
+      // Convert to Date object for consistency
+      taskData.deadline = date;
     }
 
-    if (body.suggestedDeadline && !isValidDate(body.suggestedDeadline)) {
-      throw new ValidationError('Suggested deadline must be a future date', 'suggestedDeadline');
+    if (taskData.progressPercentage !== undefined && (typeof taskData.progressPercentage !== 'number' || taskData.progressPercentage < 0 || taskData.progressPercentage > 100)) {
+      throw new ValidationError('Progress percentage must be a number between 0 and 100', 'progressPercentage');
     }
 
-    if (body.suggestedPriority && !VALID_PRIORITIES.includes(body.suggestedPriority)) {
-      throw new ValidationError(`Suggested priority must be one of: ${VALID_PRIORITIES.join(', ')}`, 'suggestedPriority');
+    if (taskData.projectId !== undefined && typeof taskData.projectId !== 'number') {
+      throw new ValidationError('Project ID must be a number', 'projectId');
     }
 
-    // Validate attachments
-    if (body.attachments) {
-      if (!Array.isArray(body.attachments)) {
+    if (taskData.assignedUserId !== undefined && typeof taskData.assignedUserId !== 'number') {
+      throw new ValidationError('Assigned user ID must be a number', 'assignedUserId');
+    }
+
+    if (taskData.suggestedPriority !== undefined && !VALID_TASK_PRIORITIES.includes(taskData.suggestedPriority)) {
+      throw new ValidationError('Invalid suggested priority value', 'suggestedPriority');
+    }
+
+    if (taskData.suggestedDeadline !== undefined) {
+      const date = new Date(taskData.suggestedDeadline);
+      if (isNaN(date.getTime())) {
+        throw new ValidationError('Suggested deadline must be a valid date', 'suggestedDeadline');
+      }
+      // Convert to Date object for consistency
+      taskData.suggestedDeadline = date;
+    }
+
+    // Validate attachments if present
+    if (taskData.attachments) {
+      if (!Array.isArray(taskData.attachments)) {
         throw new ValidationError('Attachments must be an array', 'attachments');
       }
-      
-      for (let i = 0; i < body.attachments.length; i++) {
-        const attachment = body.attachments[i];
+
+      for (let i = 0; i < taskData.attachments.length; i++) {
+        const attachment = taskData.attachments[i];
+        
         if (!attachment.fileName || typeof attachment.fileName !== 'string') {
-          throw new ValidationError(`Attachment ${i + 1}: fileName is required`, 'attachments');
+          throw new ValidationError(`Attachment ${i + 1}: fileName is required and must be a string`, 'attachments');
         }
-        if (!attachment.fileType || typeof attachment.fileType !== 'string') {
-          throw new ValidationError(`Attachment ${i + 1}: fileType is required`, 'attachments');
+
+        if (!attachment.fileUrl || typeof attachment.fileUrl !== 'string') {
+          throw new ValidationError(`Attachment ${i + 1}: fileUrl is required and must be a string`, 'attachments');
         }
-        if (!ALLOWED_FILE_TYPES.includes(attachment.fileType)) {
+
+        if (attachment.fileType && !ALLOWED_FILE_TYPES.includes(attachment.fileType)) {
           throw new ValidationError(`Attachment ${i + 1}: fileType not allowed`, 'attachments');
         }
-        if (typeof attachment.fileSize !== 'number' || attachment.fileSize <= 0 || attachment.fileSize > MAX_FILE_SIZE) {
-          throw new ValidationError(`Attachment ${i + 1}: fileSize must be between 1 and ${MAX_FILE_SIZE} bytes`, 'attachments');
+
+        if (typeof attachment.fileSizeBytes !== 'number' || attachment.fileSizeBytes <= 0 || attachment.fileSizeBytes > MAX_FILE_SIZE) {
+          throw new ValidationError(`Attachment ${i + 1}: fileSizeBytes must be between 1 and ${MAX_FILE_SIZE} bytes`, 'attachments');
         }
       }
     }
-
-    // Validate comments
-    if (body.comments) {
-      if (!Array.isArray(body.comments)) {
-        throw new ValidationError('Comments must be an array', 'comments');
-      }
-      
-      for (let i = 0; i < body.comments.length; i++) {
-        const comment = body.comments[i];
-        if (!comment.userId || typeof comment.userId !== 'string') {
-          throw new ValidationError(`Comment ${i + 1}: userId is required`, 'comments');
-        }
-        if (!comment.userName || typeof comment.userName !== 'string') {
-          throw new ValidationError(`Comment ${i + 1}: userName is required`, 'comments');
-        }
-        if (!comment.content || typeof comment.content !== 'string' || comment.content.trim().length === 0) {
-          throw new ValidationError(`Comment ${i + 1}: content is required and cannot be empty`, 'comments');
-        }
-      }
-    }
-
-    // Sanitize string fields
-    req.body.title = sanitizeString(body.title);
-    if (body.description) req.body.description = sanitizeString(body.description);
-    req.body.assignerId = sanitizeString(body.assignerId);
-    req.body.assignerName = sanitizeString(body.assignerName);
-    if (body.assignedUserId) req.body.assignedUserId = sanitizeString(body.assignedUserId);
-    if (body.assigneeName) req.body.assigneeName = sanitizeString(body.assigneeName);
 
     next();
   } catch (error) {
-    if (error instanceof ValidationError) {
-      res.status(400).json({
-        error: 'Validation failed',
-        message: error.message,
-        field: error.field
-      });
-    } else {
-      next(error);
-    }
+    next(error);
   }
 };
 
 export const validateUpdateTask = (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { id } = req.params;
-    
-    if (!id || !isValidUUID(id)) {
-      throw new ValidationError('Valid task ID is required', 'id');
+    const taskData: UpdateTaskRequest = req.body;
+
+    // Validate optional fields
+    if (taskData.title !== undefined && (typeof taskData.title !== 'string' || taskData.title.trim().length === 0)) {
+      throw new ValidationError('Title must be a non-empty string', 'title');
     }
 
-    const body: UpdateTaskRequest = req.body;
+    if (taskData.description !== undefined && typeof taskData.description !== 'string') {
+      throw new ValidationError('Description must be a string', 'description');
+    }
 
-    // Validate only provided fields
-    if (body.title !== undefined) {
-      if (typeof body.title !== 'string' || body.title.trim().length === 0) {
-        throw new ValidationError('Title must be a non-empty string', 'title');
+    if (taskData.status !== undefined && !VALID_TASK_STATUSES.includes(taskData.status)) {
+      throw new ValidationError('Invalid status value', 'status');
+    }
+
+    if (taskData.priority !== undefined && !VALID_TASK_PRIORITIES.includes(taskData.priority)) {
+      throw new ValidationError('Invalid priority value', 'priority');
+    }
+
+    if (taskData.deadline !== undefined) {
+      const date = new Date(taskData.deadline);
+      if (isNaN(date.getTime())) {
+        throw new ValidationError('Deadline must be a valid date', 'deadline');
       }
-      if (body.title.length > 255) {
-        throw new ValidationError('Title must be less than 255 characters', 'title');
+      // Convert to Date object for consistency
+      taskData.deadline = date;
+    }
+
+    if (taskData.progressPercentage !== undefined && (typeof taskData.progressPercentage !== 'number' || taskData.progressPercentage < 0 || taskData.progressPercentage > 100)) {
+      throw new ValidationError('Progress percentage must be a number between 0 and 100', 'progressPercentage');
+    }
+
+    if (taskData.projectId !== undefined && typeof taskData.projectId !== 'number') {
+      throw new ValidationError('Project ID must be a number', 'projectId');
+    }
+
+    if (taskData.assignedUserId !== undefined && typeof taskData.assignedUserId !== 'number') {
+      throw new ValidationError('Assigned user ID must be a number', 'assignedUserId');
+    }
+
+    if (taskData.suggestedPriority !== undefined && !VALID_TASK_PRIORITIES.includes(taskData.suggestedPriority)) {
+      throw new ValidationError('Invalid suggested priority value', 'suggestedPriority');
+    }
+
+    if (taskData.suggestedDeadline !== undefined) {
+      const date = new Date(taskData.suggestedDeadline);
+      if (isNaN(date.getTime())) {
+        throw new ValidationError('Suggested deadline must be a valid date', 'suggestedDeadline');
       }
-      req.body.title = sanitizeString(body.title);
+      // Convert to Date object for consistency
+      taskData.suggestedDeadline = date;
     }
 
-    if (body.deadline !== undefined) {
-      if (!isValidDate(body.deadline)) {
-        throw new ValidationError('Deadline must be a future date', 'deadline');
+    // Validate attachments if present
+    if (taskData.attachments) {
+      if (!Array.isArray(taskData.attachments)) {
+        throw new ValidationError('Attachments must be an array', 'attachments');
+      }
+
+      for (let i = 0; i < taskData.attachments.length; i++) {
+        const attachment = taskData.attachments[i];
+        
+        if (!attachment.fileName || typeof attachment.fileName !== 'string') {
+          throw new ValidationError(`Attachment ${i + 1}: fileName is required and must be a string`, 'attachments');
+        }
+
+        if (!attachment.fileUrl || typeof attachment.fileUrl !== 'string') {
+          throw new ValidationError(`Attachment ${i + 1}: fileUrl is required and must be a string`, 'attachments');
+        }
+
+        if (attachment.fileType && !ALLOWED_FILE_TYPES.includes(attachment.fileType)) {
+          throw new ValidationError(`Attachment ${i + 1}: fileType not allowed`, 'attachments');
+        }
+
+        if (typeof attachment.fileSizeBytes !== 'number' || attachment.fileSizeBytes <= 0 || attachment.fileSizeBytes > MAX_FILE_SIZE) {
+          throw new ValidationError(`Attachment ${i + 1}: fileSizeBytes must be between 1 and ${MAX_FILE_SIZE} bytes`, 'attachments');
+        }
       }
     }
 
-    if (body.status !== undefined && !VALID_STATUSES.includes(body.status)) {
-      throw new ValidationError(`Status must be one of: ${VALID_STATUSES.join(', ')}`, 'status');
-    }
+    // Validate comments if present
+    if (taskData.comments) {
+      if (!Array.isArray(taskData.comments)) {
+        throw new ValidationError('Comments must be an array', 'comments');
+      }
 
-    if (body.priority !== undefined && !VALID_PRIORITIES.includes(body.priority)) {
-      throw new ValidationError(`Priority must be one of: ${VALID_PRIORITIES.join(', ')}`, 'priority');
-    }
+      for (let i = 0; i < taskData.comments.length; i++) {
+        const comment = taskData.comments[i];
+        
+        if (!comment.content || typeof comment.content !== 'string') {
+          throw new ValidationError(`Comment ${i + 1}: content is required and must be a string`, 'comments');
+        }
 
-    // Similar validation for other optional fields...
-    if (body.description !== undefined && typeof body.description === 'string') {
-      req.body.description = sanitizeString(body.description);
+        if (!comment.userId || typeof comment.userId !== 'number') {
+          throw new ValidationError(`Comment ${i + 1}: userId is required and must be a number`, 'comments');
+        }
+      }
     }
 
     next();
   } catch (error) {
-    if (error instanceof ValidationError) {
-      res.status(400).json({
-        error: 'Validation failed',
-        message: error.message,
-        field: error.field
-      });
-    } else {
-      next(error);
-    }
+    next(error);
   }
 };
 
 export const validatePagination = (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { page, limit, sortBy, sortOrder } = req.query;
+    const { page, limit, status, priority, assigneeId, projectId, sortBy, sortOrder } = req.query;
 
-    if (page !== undefined) {
-      const pageNum = parseInt(page as string);
-      if (isNaN(pageNum) || pageNum < 1) {
-        throw new ValidationError('Page must be a positive integer', 'page');
-      }
-      req.query.page = pageNum.toString();
+    if (page !== undefined && (isNaN(Number(page)) || Number(page) < 1)) {
+      throw new ValidationError('Page must be a positive number', 'page');
     }
 
-    if (limit !== undefined) {
-      const limitNum = parseInt(limit as string);
-      if (isNaN(limitNum) || limitNum < 1 || limitNum > 100) {
-        throw new ValidationError('Limit must be between 1 and 100', 'limit');
-      }
-      req.query.limit = limitNum.toString();
+    if (limit !== undefined && (isNaN(Number(limit)) || Number(limit) < 1 || Number(limit) > 100)) {
+      throw new ValidationError('Limit must be a number between 1 and 100', 'limit');
     }
 
-    const allowedSortFields = ['created_at', 'updated_at', 'deadline', 'priority', 'status', 'title'];
-    if (sortBy !== undefined && !allowedSortFields.includes(sortBy as string)) {
-      throw new ValidationError(`sortBy must be one of: ${allowedSortFields.join(', ')}`, 'sortBy');
+    if (status !== undefined && !VALID_TASK_STATUSES.includes(status as string)) {
+      throw new ValidationError('Invalid status value', 'status');
+    }
+
+    if (priority !== undefined && !VALID_TASK_PRIORITIES.includes(priority as string)) {
+      throw new ValidationError('Invalid priority value', 'priority');
+    }
+
+    if (assigneeId !== undefined && isNaN(Number(assigneeId))) {
+      throw new ValidationError('Assignee ID must be a number', 'assigneeId');
+    }
+
+    if (projectId !== undefined && isNaN(Number(projectId))) {
+      throw new ValidationError('Project ID must be a number', 'projectId');
+    }
+
+    if (sortBy !== undefined && typeof sortBy !== 'string') {
+      throw new ValidationError('Sort by must be a string', 'sortBy');
     }
 
     if (sortOrder !== undefined && !['asc', 'desc'].includes(sortOrder as string)) {
-      throw new ValidationError('sortOrder must be either "asc" or "desc"', 'sortOrder');
+      throw new ValidationError('Sort order must be either "asc" or "desc"', 'sortOrder');
     }
 
     next();
   } catch (error) {
-    if (error instanceof ValidationError) {
-      res.status(400).json({
-        error: 'Validation failed',
-        message: error.message,
-        field: error.field
-      });
-    } else {
-      next(error);
-    }
+    next(error);
   }
 };

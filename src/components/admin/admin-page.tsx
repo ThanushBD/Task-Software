@@ -1,4 +1,3 @@
-
 "use client";
 
 import { CreateTaskForm } from "./create-task-form";
@@ -43,7 +42,7 @@ function RejectTaskButton({ taskId, rejecterId }: { taskId: string; rejecterId: 
         variant: state.success ? "default" : "destructive",
       });
       if (state.success && state.task) { 
-        updateTask(state.task);
+        updateTask(state.task.id, state.task);
       }
     }
   }, [state, toast, updateTask, isPending]);
@@ -138,7 +137,8 @@ export function AdminPage() {
   const { currentUser, allUsers } = useAuth();
   const { tasks, isLoadingTasks } = useTasks(); 
   
-  const assignableUsers = allUsers.filter(user => user.role === 'user');
+  const assignableUsers = allUsers.filter(user => user.role === 'User');
+  console.log('Assignable users:', assignableUsers);
 
   const [selectedTaskForApproval, setSelectedTaskForApproval] = useState<Task | null>(null);
   const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
@@ -147,7 +147,7 @@ export function AdminPage() {
   const [isRevisionsDialogOpen, setIsRevisionsDialogOpen] = useState(false);
 
 
-  if (!currentUser || currentUser.role !== 'admin') {
+  if (!currentUser || currentUser.role !== 'Admin') {
     return (
       <div className="p-4 md:p-6">
         <Alert variant="destructive">
@@ -225,23 +225,23 @@ export function AdminPage() {
                     <h3 className="font-semibold text-lg">{task.title}</h3>
                     <p className="text-sm text-muted-foreground line-clamp-2 mb-1">{task.description}</p>
                     <div className="text-xs text-muted-foreground space-y-0.5">
-                        <p>Submitted by: {task.assignerName}</p>
-                        {task.suggestedDeadline && <p>Suggested Deadline: {format(parseISO(task.suggestedDeadline), "PPP")}</p>}
-                        {task.suggestedPriority && <p>Suggested Priority: {task.suggestedPriority}</p>}
+                      <p>Submitted by: {task.assigner?.firstName} {task.assigner?.lastName}</p>
+                      {task.suggestedDeadline && <p>Suggested Deadline: {format(parseISO(task.suggestedDeadline), "PPP")}</p>}
+                      {task.suggestedPriority && <p>Suggested Priority: {task.suggestedPriority}</p>}
                     </div>
-                     <div className="mt-2">
-                        <TaskStatusBadge status={task.status} />
-                     </div>
+                    <div className="mt-2">
+                      <TaskStatusBadge status={task.status} />
+                    </div>
                   </div>
                   <AlertDialog> 
                     <div className="flex flex-col sm:flex-row sm:items-center gap-2 mt-3 sm:mt-0 self-start sm:self-center shrink-0">
-                        <Button size="sm" variant="outline" onClick={() => openApproveDialog(task)}>
-                            <CheckSquare className="mr-2 h-4 w-4" /> Approve & Assign
-                        </Button>
-                        <Button size="sm" variant="outline" className="text-orange-600 hover:bg-orange-500/10 border-orange-500/50 hover:border-orange-500" onClick={() => openRevisionsDialog(task)}>
-                            <MessageSquareWarning className="mr-2 h-4 w-4" /> Request Revisions
-                        </Button>
-                        {currentUser && <RejectTaskButton taskId={task.id} rejecterId={currentUser.id} />}
+                      <Button size="sm" variant="outline" onClick={() => openApproveDialog(task)}>
+                        <CheckSquare className="mr-2 h-4 w-4" /> Approve & Assign
+                      </Button>
+                      <Button size="sm" variant="outline" className="text-orange-600 hover:bg-orange-500/10 border-orange-500/50 hover:border-orange-500" onClick={() => openRevisionsDialog(task)}>
+                        <MessageSquareWarning className="mr-2 h-4 w-4" /> Request Revisions
+                      </Button>
+                      {currentUser && <RejectTaskButton taskId={task.id} rejecterId={currentUser.id.toString()} />}
                     </div>
                   </AlertDialog>
                 </li>

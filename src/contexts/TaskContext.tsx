@@ -16,24 +16,52 @@ interface TaskContextType {
   tasks: Task[];
   isLoadingTasks: boolean;
   error: string | null;
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPrevPage: boolean;
+  } | null;
   addTask: (task: Omit<Task, 'id'>) => Promise<void>;
   updateTask: (id: string, updates: Partial<Task>) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
-  refreshTasks: () => Promise<void>;
+  refreshTasks: (params?: {
+    page?: number;
+    limit?: number;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
+    status?: string;
+    priority?: string;
+    assigneeId?: number;
+    assignerId?: number;
+  }) => Promise<void>;
 }
 
 const TaskContext = createContext<TaskContextType | undefined>(undefined);
 
 export function TaskProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [pagination, setPagination] = useState<TaskContextType['pagination']>(null);
   const [isLoadingTasks, setIsLoadingTasks] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadTasks = useCallback(async () => {
+  const loadTasks = useCallback(async (params?: {
+    page?: number;
+    limit?: number;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
+    status?: string;
+    priority?: string;
+    assigneeId?: number;
+    assignerId?: number;
+  }) => {
     setIsLoadingTasks(true);
     try {
-      const response = await fetchTasks();
+      const response = await fetchTasks(params);
       setTasks(response.tasks);
+      setPagination(response.pagination);
       setError(null);
     } catch (err) {
       setError('Failed to load tasks');
@@ -49,13 +77,13 @@ export function TaskProvider({ children }: { children: ReactNode }) {
 
   const addTask = useCallback(async (newTask: Omit<Task, 'id'>) => {
     try {
-      const created = await createTask(newTask);
+      const created = await createTask(newTask); // This is where the API call is made
       setTasks(prev => [created, ...prev]);
       setError(null);
     } catch (err) {
-      setError('Failed to create task');
+      setError('Failed to create task'); // Sets an error message in the context
       console.error('Error creating task:', err);
-      throw err;
+      throw err; // Re-throws the error for the calling component
     }
   }, []);
 
@@ -86,6 +114,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
   const contextValue = useMemo(
     () => ({
       tasks,
+      pagination,
       isLoadingTasks,
       error,
       addTask,
@@ -93,7 +122,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       deleteTask: deleteTaskById,
       refreshTasks: loadTasks,
     }),
-    [tasks, isLoadingTasks, error, addTask, updateTaskById, deleteTaskById, loadTasks]
+    [tasks, pagination, isLoadingTasks, error, addTask, updateTaskById, deleteTaskById, loadTasks]
   );
 
   return <TaskContext.Provider value={contextValue}>{children}</TaskContext.Provider>;

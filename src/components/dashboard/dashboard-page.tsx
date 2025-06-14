@@ -1,8 +1,7 @@
-
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { Task } from "@/types";
+import type { Task, TaskStatus } from "@/types";
 import { ListChecks, Clock3, CalendarClock, CheckCircle2, AlertTriangle, PlusCircle, Loader2 } from "lucide-react";
 import { MyTaskItem } from "./my-tasks-card";
 import { UpcomingDeadlineItem } from "./upcoming-deadlines-card";
@@ -46,10 +45,10 @@ export function DashboardPage() {
   }
 
   const myTasks = tasks.filter(task => {
-    const isAssignedToMe = task.assignedUserId === currentUser?.id && 
+    const isAssignedToMe = task.assignedUserId === Number(currentUser?.id) && 
                            (task.status === 'To Do' || task.status === 'In Progress' || task.status === 'Overdue');
     // User sees tasks they created that are pending or need their attention
-    const isMyCreatedTaskNeedingAction = task.assignerId === currentUser?.id &&
+    const isMyCreatedTaskNeedingAction = task.assignerId === Number(currentUser?.id) &&
                             (task.status === 'Pending Approval' || task.status === 'Needs Changes' || task.status === 'Rejected');
     return isAssignedToMe || isMyCreatedTaskNeedingAction;
   }).sort((a,b) => {
@@ -68,19 +67,19 @@ export function DashboardPage() {
     if (statusOrderValue(a.status) !== statusOrderValue(b.status)) {
       return statusOrderValue(a.status) - statusOrderValue(b.status);
     }
-    return parseISO(a.deadline).getTime() - parseISO(b.deadline).getTime();
+    return parseISO(a.deadline || '').getTime() - parseISO(b.deadline || '').getTime();
   })
   .slice(0, 10);
 
   const upcomingDeadlines = tasks
-    .filter(task => task.deadline && isFuture(parseISO(task.deadline)) && differenceInDays(parseISO(task.deadline), new Date()) <= 7 && task.status !== 'Completed' && task.status !== 'Rejected' && task.assignedUserId === currentUser?.id)
-    .sort((a, b) => parseISO(a.deadline!).getTime() - parseISO(b.deadline!).getTime())
+    .filter(task => task.deadline && isFuture(parseISO(task.deadline)) && differenceInDays(parseISO(task.deadline), new Date()) <= 7 && task.status !== 'Completed' && task.status !== 'Rejected' && task.assignedUserId === Number(currentUser?.id))
+    .sort((a, b) => parseISO(a.deadline || '').getTime() - parseISO(b.deadline || '').getTime())
     .slice(0, 5);
 
   // Stats cards can show system-wide or user-specific, adjusting for clarity
-  const myActiveAssignedTasksCount = tasks.filter(task => task.assignedUserId === currentUser?.id && (task.status === 'To Do' || task.status === 'In Progress')).length;
-  const myPendingSubmissionsCount = tasks.filter(task => task.assignerId === currentUser?.id && (task.status === 'Pending Approval' || task.status === 'Needs Changes')).length;
-  const myOverdueTasksCount = tasks.filter(task => task.status === 'Overdue' && task.assignedUserId === currentUser?.id).length;
+  const myActiveAssignedTasksCount = tasks.filter(task => task.assignedUserId === Number(currentUser?.id) && (task.status === 'To Do' || task.status === 'In Progress')).length;
+  const myPendingSubmissionsCount = tasks.filter(task => task.assignerId === Number(currentUser?.id) && (task.status === 'Pending Approval' || task.status === 'Needs Changes')).length;
+  const myOverdueTasksCount = tasks.filter(task => task.status === 'Overdue' && task.assignedUserId === Number(currentUser?.id)).length;
 
 
   return (
@@ -88,7 +87,7 @@ export function DashboardPage() {
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
         <h1 className="text-3xl font-bold font-headline text-foreground">Dashboard</h1>
         {/* This button is for ANY user to submit a task idea for approval. */}
-        {currentUser?.role === 'user' && (
+        {currentUser?.role === 'User' && (
           <Dialog open={isCreateTaskOpen} onOpenChange={setIsCreateTaskOpen}>
             <DialogTrigger asChild>
               <Button>

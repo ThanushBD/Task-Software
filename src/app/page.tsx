@@ -1,4 +1,3 @@
-
 "use client"; // Required to use useAuth hook
 
 import { Header } from "@/components/layout/header";
@@ -20,7 +19,7 @@ export default function Home() {
       <main className="flex-1">
         <Tabs defaultValue="dashboard" className="w-full p-2 sm:p-4">
           <div className="flex justify-center mb-4 sm:mb-6">
-            <TabsList className={`grid w-full max-w-lg ${currentUser?.role === 'admin' ? 'grid-cols-4' : 'grid-cols-3'}`}>
+            <TabsList className={`grid w-full max-w-lg ${currentUser?.role === 'Admin' ? 'grid-cols-4' : 'grid-cols-3'}`}>
               <TabsTrigger value="dashboard" className="flex items-center gap-2">
                 <LayoutDashboard className="h-4 w-4" />
                 Dashboard
@@ -33,7 +32,7 @@ export default function Home() {
                 <Brain className="h-4 w-4" />
                 AI Optimizer
               </TabsTrigger>
-              {currentUser?.role === 'admin' && (
+              {currentUser?.role === 'Admin' && (
                 <TabsTrigger value="admin" className="flex items-center gap-2">
                   <UserCog className="h-4 w-4" />
                   Admin
@@ -50,7 +49,7 @@ export default function Home() {
           <TabsContent value="ai-optimizer">
             <AiOptimizerPage />
           </TabsContent>
-          {currentUser?.role === 'admin' && (
+          {currentUser?.role === 'Admin' && (
             <TabsContent value="admin">
               <AdminPage />
             </TabsContent>

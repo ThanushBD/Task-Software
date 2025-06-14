@@ -1,4 +1,3 @@
-
 export type TaskStatus = "To Do" | "In Progress" | "Completed" | "Overdue" | "Pending Approval" | "Needs Changes" | "Rejected";
 
 export type TaskPriority = "Low" | "Medium" | "High";
@@ -11,37 +10,70 @@ export interface ConceptualFileAttachment {
   // url?: string; // Would be populated if real files were uploaded
 }
 
+export interface TaskAttachment {
+  id: string;
+  fileName: string;
+  fileUrl: string;
+  fileType: string | null;
+  fileSizeBytes: number;
+  createdAt: string;
+}
+
 export interface TaskComment {
-  userId: string;
-  userName: string;
-  comment: string;
-  timestamp: string; // ISO Date string
+  id: string;
+  content: string;
+  createdAt: string;
+  user: {
+    id: number;
+    firstName: string;
+    lastName: string;
+  };
 }
 
 export interface Task {
   id: string;
   title: string;
-  description: string;
+  description: string | null;
   status: TaskStatus;
-  deadline: string; 
   priority: TaskPriority;
-  assignedUserId: string | null; 
-  assigneeName: string | null; 
-  assignerId: string; 
-  assignerName: string; 
-  timerDuration: number; 
-  attachments: ConceptualFileAttachment[]; // Changed to be non-optional, initialized as []
-  comments?: TaskComment[]; 
-  suggestedDeadline?: string | null;
-  suggestedPriority?: TaskPriority | null;
+  deadline: Date | null;
+  progressPercentage: number;
+  projectId: number | null;
+  recurringPattern: any | null;
+  assignerId: number;
+  assignedUserId: number | null;
+  updatedBy: number | null;
+  suggestedPriority: TaskPriority | null;
+  suggestedDeadline: Date | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+  softDeletedAt: string | null;
+  timerDuration: number;
+  // Nested objects from joins
+  assignee?: {
+    id: number;
+    firstName: string;
+    lastName: string;
+  };
+  assigner?: {
+    id: number;
+    firstName: string;
+    lastName: string;
+  };
+  attachments: TaskAttachment[];
+  comments: TaskComment[];
+  projectName?: string;
 }
 
-export type UserRole = "admin" | "user";
+export type UserRole = "Admin" | "User";
 
 export interface User {
-  id:string;
+  id: number;
   email: string;
-  name?: string;
+  firstName: string;
+  lastName: string;
+  name?: string; // Optional: Keep if `name` is still used in some contexts, but `firstName`/`lastName` are primary
   role: UserRole;
   password?: string;
 }

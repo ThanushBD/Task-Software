@@ -5,10 +5,12 @@ import { parseTaskFromText, ParseTaskFromTextInput, ParseTaskFromTextOutput } fr
 import { notifyOverdueTask } from "@/ai/flows/notify-overdue-task-flow";
 import type { NotifyOverdueTaskInput, NotifyOverdueTaskOutput } from "@/ai/flows/notify-overdue-task-types";
 import { z } from "zod";
-import { addMockTask, MOCK_USERS, MOCK_TASKS, updateMockTask, CEO_EMAIL, NO_PRIORITY_SELECTED_VALUE } from "@/lib/constants";
+import { addMockTask, MOCK_TASKS, updateMockTask, CEO_EMAIL, NO_PRIORITY_SELECTED_VALUE } from "@/lib/constants";
 import type { Task, TaskPriority, TaskStatus, User, TaskComment, ConceptualFileAttachment } from "@/types";
 import { revalidatePath } from "next/cache";
 import { format, isPast, parseISO } from "date-fns";
+import { userAPI } from "@/lib/auth-api";
+import { headers } from "next/headers";
 
 
 // --- Suggest Deadline Action ---
@@ -123,7 +125,15 @@ export async function parseTaskFromTextAction(
 const AdminCreateTaskFormSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters long."),
   description: z.string().min(10, "Description must be at least 10 characters long."),
-  deadline: z.string({ required_error: "Deadline is required." }).min(1, "Deadline is required."),
+  deadline: z.string()
+    .min(1, "Deadline is required.")
+    .transform((str) => {
+      const date = new Date(str);
+      if (isNaN(date.getTime())) {
+        throw new Error("Invalid date format");
+      }
+      return date;
+    }),
   priority: z.enum(["Low", "Medium", "High"] as [TaskPriority, ...TaskPriority[]]),
   assignedUserId: z.string({ required_error: "Assignee is required." }).min(1,"An employee must be assigned."),
   timerDuration: z.string({ required_error: "Timer duration is required." })
@@ -132,9 +142,6 @@ const AdminCreateTaskFormSchema = z.object({
       const num = Number(val);
       return !isNaN(num) && num > 0;
     }, { message: "Timer duration must be a positive number." }),
-  assignerId: z.string({ required_error: "Assigner ID is missing." }),
-  assignerName: z.string({ required_error: "Assigner name is missing." }),
-  // attachments field is conceptual and not processed by the action
 });
 
 export interface AdminCreateTaskActionState {
@@ -148,8 +155,6 @@ export interface AdminCreateTaskActionState {
     priority?: string[];
     assignedUserId?: string[];
     timerDuration?: string[];
-    assignerId?: string[];
-    assignerName?: string[];
     _form?: string[];
   };
 }
@@ -166,8 +171,6 @@ export async function adminCreateTaskAction(
     priority: formData.get("priority"),
     assignedUserId: formData.get("assignedUserId"),
     timerDuration: formData.get("timerDuration"),
-    assignerId: formData.get("assignerId"),
-    assignerName: formData.get("assignerName"),
   });
 
   if (!validatedFields.success) {
@@ -178,10 +181,14 @@ export async function adminCreateTaskAction(
     };
   }
   
-  const { title, description, deadline, priority, assignedUserId, timerDuration, assignerId, assignerName } = validatedFields.data;
+  const { title, description, deadline, priority, assignedUserId, timerDuration } = validatedFields.data;
 
-  const assignerUser = MOCK_USERS.find(user => user.id === assignerId);
-  if (!assignerUser || assignerUser.role !== 'admin') {
+  console.log("adminCreateTaskAction: assignedUserId from form data:", assignedUserId);
+
+  const cookieHeader = (await headers()).get("cookie") || undefined;
+  const currentUser = await userAPI.verifySession(cookieHeader);
+
+  if (!currentUser || currentUser.role !== 'Admin') {
     return {
       success: false,
       message: "Unauthorized: Only administrators can create tasks.",
@@ -189,7 +196,10 @@ export async function adminCreateTaskAction(
     };
   }
 
-  const assignee = MOCK_USERS.find(user => user.id === assignedUserId);
+  const allUsers = await userAPI.getAllUsers(cookieHeader);
+  console.log("adminCreateTaskAction: allUsers from backend:", allUsers);
+  const assignee = allUsers.find(user => user.email === assignedUserId);
+  console.log("adminCreateTaskAction: found assignee:", assignee);
    if (!assignee) { 
     return {
       success: false,
@@ -198,19 +208,46 @@ export async function adminCreateTaskAction(
     };
   }
 
+  // Ensure deadline is a valid Date object
+  if (!(deadline instanceof Date) || isNaN(deadline.getTime())) {
+    return {
+      success: false,
+      message: "Invalid deadline date provided.",
+      errors: { deadline: ["Please provide a valid deadline date."] },
+    };
+  }
+
   const newTask: Task = {
     id: `task-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
     title,
-    description,
+    description: description || null,
     status: "To Do" as TaskStatus,
-    deadline: new Date(deadline).toISOString(),
     priority: priority as TaskPriority,
-    assignedUserId: assignedUserId,
-    assigneeName: assignee.name || "Unknown",
-    assignerId: assignerId,
-    assignerName: assignerName,
+    deadline: deadline,
+    progressPercentage: 0,
+    projectId: null,
+    recurringPattern: null,
+    assignerId: Number(currentUser.id),
+    assignedUserId: Number(assignee.id),
+    updatedBy: Number(currentUser.id),
+    suggestedPriority: null,
+    suggestedDeadline: null, 
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    completedAt: null,
+    softDeletedAt: null,
+    assignee: {
+      id: Number(assignee.id),
+      firstName: assignee.firstName || '',
+      lastName: assignee.lastName || '',
+    },
+    assigner: {
+      id: Number(currentUser.id),
+      firstName: currentUser.firstName || '',
+      lastName: currentUser.lastName || '',
+    },
     timerDuration: Number(timerDuration),
-    attachments: [], // Conceptual attachments added on client, not processed here
+    attachments: [],
     comments: [],
   };
 
@@ -222,7 +259,7 @@ export async function adminCreateTaskAction(
     return {
       success: true,
       task: newTask,
-      message: `Task "${newTask.title}" created by ${newTask.assignerName}, assigned to ${newTask.assigneeName}. Deadline: ${format(new Date(newTask.deadline), "PPP")}. Timer: ${newTask.timerDuration} min.`,
+      message: `Task "${newTask.title}" created by ${currentUser.firstName} ${currentUser.lastName}, assigned to ${assignee.firstName} ${assignee.lastName}. Deadline: ${newTask.deadline ? format(newTask.deadline, "PPP") : 'N/A'}. Timer: ${newTask.timerDuration} min.`,
     };
   } catch (error) {
     console.error("Error creating task:", error);
@@ -244,7 +281,6 @@ const UserCreateTaskFormSchema = z.object({
   creatorName: z.string({ required_error: "Creator name is missing." }),
   suggestedDeadline: z.string().optional().nullable(),
   suggestedPriority: z.enum([NO_PRIORITY_SELECTED_VALUE, ...VALID_TASK_PRIORITIES_FOR_SUGGESTION]).optional().nullable(),
-  // attachments field is conceptual and not processed by the action
 });
 
 export interface UserCreateTaskActionState {
@@ -285,11 +321,11 @@ export async function createUserTaskAction(
 
   const { title, description, creatorId, creatorName, suggestedDeadline, suggestedPriority: rawSuggestedPriority } = validatedFields.data;
 
-  const creatorUser = MOCK_USERS.find(user => user.id === creatorId);
-  if (!creatorUser) {
+  const creatorUser = await userAPI.verifySession();
+  if (!creatorUser || String(creatorUser.id) !== creatorId) {
     return {
       success: false,
-      message: "Unauthorized: Creator user not found.",
+      message: "Unauthorized: Invalid user attempting to create task.",
       errors: { _form: ["Invalid user attempting to create task."] },
     };
   }
@@ -305,19 +341,31 @@ export async function createUserTaskAction(
   const newTask: Task = {
     id: `task-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
     title,
-    description,
+    description: description || null,
     status: "Pending Approval" as TaskStatus,
-    deadline: suggestedDeadline ? new Date(suggestedDeadline).toISOString() : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), 
-    priority: finalTaskPriority, 
+    deadline: suggestedDeadline ? new Date(suggestedDeadline) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    priority: finalTaskPriority,
+    progressPercentage: 0,
+    projectId: null,
+    recurringPattern: null,
     assignedUserId: null, 
-    assigneeName: null,
-    assignerId: creatorId, 
-    assignerName: creatorName,
+    updatedBy: null,
+    assignee: undefined,
+    assignerId: Number(creatorUser.id),
+    assigner: {
+      id: Number(creatorUser.id),
+      firstName: creatorUser.name?.split(' ')[0] || '',
+      lastName: creatorUser.name?.split(' ').slice(1).join(' ') || '',
+    },
     timerDuration: 0,
-    attachments: [], // Conceptual attachments added on client, not processed here
+    attachments: [],
     comments: [],
-    suggestedDeadline: suggestedDeadline ? new Date(suggestedDeadline).toISOString() : null,
+    suggestedDeadline: suggestedDeadline ? new Date(suggestedDeadline) : null,
     suggestedPriority: finalSuggestedPriorityAttribute,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    completedAt: null,
+    softDeletedAt: null,
   };
 
   try {
@@ -328,7 +376,7 @@ export async function createUserTaskAction(
     return {
       success: true,
       task: newTask,
-      message: `Task "${newTask.title}" submitted for approval by ${newTask.assignerName}.`,
+      message: `Task "${newTask.title}" submitted for approval by ${creatorUser.name || creatorUser.email}.`,
     };
   } catch (error) {
     console.error("Error creating user task:", error);
@@ -342,15 +390,15 @@ export async function createUserTaskAction(
 }
 
 // --- Approve Task Action (for Admin/Manager) ---
-const ApproveTaskSchema = z.object({
+const ApproveTaskFormSchema = z.object({
   taskId: z.string().min(1, "Task ID is required."),
   approverId: z.string().min(1, "Approver ID is required."),
-  assignedUserId: z.string({ required_error: "Please assign a user."}).min(1, "Please assign a user."),
-  priority: z.enum(["Low", "Medium", "High"] as [TaskPriority, ...TaskPriority[]]),
-  deadline: z.string({ required_error: "Deadline is required."}).min(1, "Deadline is required."),
-  timerDuration: z.string({ required_error: "Timer duration is required."})
-    .min(1, "Timer duration must be at least 1.")
-    .refine(val => Number(val) > 0, { message: "Timer duration must be positive."}),
+  assignedUserId: z.string().optional().nullable(),
+  priority: z.enum(["Low", "Medium", "High", NO_PRIORITY_SELECTED_VALUE] as const),
+  deadline: z.coerce.date().nullable(),
+  timerDuration: z.coerce.number()
+    .refine(val => !isNaN(val) && val > 0, { message: "Timer duration must be a positive number." })
+    .nullable(),
 });
 
 export interface ApproveTaskActionState {
@@ -372,7 +420,7 @@ export async function approveTaskAction(
   prevState: ApproveTaskActionState,
   formData: FormData
 ): Promise<ApproveTaskActionState> {
-  const validatedFields = ApproveTaskSchema.safeParse({
+  const validatedFields = ApproveTaskFormSchema.safeParse({
     taskId: formData.get("taskId"),
     approverId: formData.get("approverId"),
     assignedUserId: formData.get("assignedUserId"),
@@ -385,82 +433,71 @@ export async function approveTaskAction(
     return {
       success: false,
       errors: validatedFields.error.flatten().fieldErrors,
-      message: "Validation failed.",
+      message: "Validation failed. Please check all required task details.",
     };
   }
 
   const { taskId, approverId, assignedUserId, priority, deadline, timerDuration } = validatedFields.data;
 
-  const approver = MOCK_USERS.find(user => user.id === approverId);
-  if (!approver || approver.role !== 'admin') {
+  const cookieHeader = (await headers()).get("cookie") || undefined;
+  const currentUser = await userAPI.verifySession(cookieHeader);
+
+  if (!currentUser || currentUser.role !== 'Admin') {
     return {
       success: false,
       message: "Unauthorized: Only administrators can approve tasks.",
-      task: undefined,
       errors: { _form: ["You do not have permission to perform this action."] },
     };
   }
 
-  const assignee = MOCK_USERS.find(user => user.id === assignedUserId);
-  if (!assignee) {
+  const taskToUpdate = MOCK_TASKS.find((task) => task.id === taskId);
+  if (!taskToUpdate) {
     return {
       success: false,
-      message: "Assignee not found.",
-      task: undefined,
+      message: "Task not found.",
+      errors: { taskId: ["Invalid task ID."] },
+    };
+  }
+
+  const allUsers = await userAPI.getAllUsers(cookieHeader);
+  const assignee = assignedUserId ? allUsers.find(user => String(user.id) === assignedUserId) : null;
+
+  if (assignedUserId && !assignee) {
+    return {
+      success: false,
+      message: "Assigned user not found.",
       errors: { assignedUserId: ["Invalid user selected for assignment."] },
     };
   }
 
-  const taskIndex = MOCK_TASKS.findIndex(task => task.id === taskId);
-  if (taskIndex === -1) {
-    return {
-      success: false,
-      message: "Task not found.",
-      task: undefined,
-      errors: { _form: ["The specified task does not exist."] },
-    };
-  }
-
-  const taskToApprove = MOCK_TASKS[taskIndex];
-  if (taskToApprove.status !== "Pending Approval") {
-    return {
-      success: false,
-      message: "Task is not pending approval.",
-      task: undefined,
-      errors: { _form: [`This task has status "${taskToApprove.status}" and cannot be approved directly.`] },
-    };
-  }
-
-  const approvedTask: Task = {
-    ...taskToApprove,
-    status: "To Do" as TaskStatus,
-    assignedUserId: assignee.id, 
-    assigneeName: assignee.name || assignee.email,
-    priority: priority as TaskPriority,
-    deadline: new Date(deadline).toISOString(),
-    timerDuration: Number(timerDuration),
-    suggestedDeadline: null, 
-    suggestedPriority: null,
-    // attachments are not modified by this action
+  const updatedTask: Task = {
+    ...taskToUpdate,
+    status: "Approved" as TaskStatus,
+    priority: priority === NO_PRIORITY_SELECTED_VALUE ? "Medium" : (priority as TaskPriority),
+    deadline: deadline,
+    assignedUserId: assignee ? Number(assignee.id) : taskToUpdate.assignedUserId,
+    assignee: assignee ? { id: Number(assignee.id), firstName: assignee.firstName || '', lastName: assignee.lastName || '' } : taskToUpdate.assignee,
+    updatedBy: Number(currentUser.id),
+    updatedAt: new Date().toISOString(),
+    timerDuration: timerDuration ? timerDuration : taskToUpdate.timerDuration,
   };
 
   try {
-    updateMockTask(approvedTask);
+    updateMockTask(updatedTask);
     revalidatePath("/");
     revalidatePath("/admin");
 
     return {
       success: true,
-      task: approvedTask,
-      message: `Task "${approvedTask.title}" has been approved by ${approver.name || approver.email}, assigned to ${assignee.name || assignee.email}, and set to 'To Do'.`,
+      task: updatedTask,
+      message: `Task "${updatedTask.title}" approved and assigned to ${updatedTask.assignee?.firstName} ${updatedTask.assignee?.lastName}. Deadline: ${updatedTask.deadline ? format(updatedTask.deadline, "PPP") : 'N/A'}.`,
     };
   } catch (error) {
     console.error("Error approving task:", error);
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred while approving the task.";
     return {
       success: false,
       message: errorMessage,
-      task: undefined,
       errors: { _form: [errorMessage] },
     };
   }
@@ -506,8 +543,8 @@ export async function requestRevisionsAction(
 
   const { taskId, reviserId, comment } = validatedFields.data;
 
-  const reviser = MOCK_USERS.find(user => user.id === reviserId);
-  if (!reviser || reviser.role !== 'admin') {
+  const reviser = await userAPI.verifySession();
+  if (!reviser || reviser.role !== 'Admin' || String(reviser.id) !== reviserId) {
     return {
       success: false,
       message: "Unauthorized: Only administrators can request revisions.",
@@ -537,17 +574,22 @@ export async function requestRevisionsAction(
   }
 
   const newCommentEntry: TaskComment = {
-    userId: reviser.id,
-    userName: reviser.name || reviser.email,
-    comment: comment,
-    timestamp: new Date().toISOString(),
+    id: `comment-${Date.now()}`,
+    content: comment,
+    createdAt: new Date().toISOString(),
+    user: {
+      id: Number(reviser.id),
+      firstName: reviser.name?.split(' ')[0] || '',
+      lastName: reviser.name?.split(' ').slice(1).join(' ') || '',
+    },
   };
 
   const revisedTask: Task = {
     ...taskToRevise,
     status: "Needs Changes" as TaskStatus,
     comments: [...(taskToRevise.comments || []), newCommentEntry],
-    // attachments are not modified by this action
+    updatedBy: Number(reviser.id),
+    updatedAt: new Date().toISOString(),
   };
 
   try {
@@ -558,7 +600,7 @@ export async function requestRevisionsAction(
     return {
       success: true,
       task: revisedTask,
-      message: `Revisions requested for task "${revisedTask.title}". Status set to 'Needs Changes'.`,
+      message: `Revisions requested for task "${revisedTask.title}".`,
     };
   } catch (error) {
     console.error("Error requesting revisions:", error);
@@ -566,7 +608,6 @@ export async function requestRevisionsAction(
     return {
       success: false,
       message: errorMessage,
-      task: undefined,
       errors: { _form: [errorMessage] },
     };
   }
@@ -608,8 +649,8 @@ export async function rejectTaskAction(
 
   const { taskId, rejecterId } = validatedFields.data;
 
-  const rejecter = MOCK_USERS.find(user => user.id === rejecterId);
-  if (!rejecter || rejecter.role !== 'admin') {
+  const rejecter = await userAPI.verifySession();
+  if (!rejecter || rejecter.role !== 'Admin' || String(rejecter.id) !== rejecterId) {
     return {
       success: false,
       message: "Unauthorized: Only administrators can reject tasks.",
@@ -641,7 +682,8 @@ export async function rejectTaskAction(
   const rejectedTask: Task = {
     ...taskToReject,
     status: "Rejected" as TaskStatus,
-    // attachments are not modified by this action
+    updatedBy: Number(rejecter.id),
+    updatedAt: new Date().toISOString(),
   };
 
   try {
@@ -660,7 +702,6 @@ export async function rejectTaskAction(
     return {
       success: false,
       message: errorMessage,
-      task: undefined,
       errors: { _form: [errorMessage] },
     };
   }
@@ -673,7 +714,6 @@ const ResubmitTaskSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters."),
   description: z.string().min(10, "Description must be at least 10 characters."),
   userId: z.string().min(1, "User ID is required."),
-  // attachments field is conceptual and not processed by the action
 });
 
 export interface ResubmitTaskActionState {
@@ -710,8 +750,8 @@ export async function resubmitTaskAction(
 
   const { taskId, title, description, userId } = validatedFields.data;
 
-  const user = MOCK_USERS.find(u => u.id === userId);
-  if (!user) {
+  const user = await userAPI.verifySession();
+  if (!user || String(user.id) !== userId) {
     return {
       success: false,
       message: "User not found.",
@@ -732,7 +772,7 @@ export async function resubmitTaskAction(
 
   const taskToResubmit = MOCK_TASKS[taskIndex];
 
-  if (taskToResubmit.assignerId !== userId) { 
+  if (taskToResubmit.assignerId !== Number(user.id)) {
      return {
       success: false,
       message: "Unauthorized: You can only resubmit tasks you created.",
@@ -753,9 +793,10 @@ export async function resubmitTaskAction(
   const resubmittedTask: Task = {
     ...taskToResubmit,
     title,
-    description,
+    description: description || null,
     status: "Pending Approval" as TaskStatus,
-    // attachments are not modified by this action (user would re-attach conceptually on client)
+    updatedBy: Number(user.id),
+    updatedAt: new Date().toISOString(),
   };
 
   try {
@@ -774,7 +815,6 @@ export async function resubmitTaskAction(
     return {
       success: false,
       message: errorMessage,
-      task: undefined,
       errors: { _form: [errorMessage] },
     };
   }
@@ -792,61 +832,58 @@ export interface CheckOverdueTasksActionState {
 export async function checkForOverdueTasksAction(
   prevState: CheckOverdueTasksActionState
 ): Promise<CheckOverdueTasksActionState> {
-  const overdueTasksProcessed: string[] = [];
-  let tasksFound = 0;
-
   try {
-    const now = new Date();
-    const overdueTasks = MOCK_TASKS.filter(task => 
-      task.deadline && isPast(parseISO(task.deadline)) && 
-      task.status !== "Completed" && task.status !== "Rejected"
+    const cookieHeader = (await headers()).get("cookie") || undefined;
+    const allUsers = await userAPI.getAllUsers(cookieHeader);
+    
+    const overdueTasks: Task[] = MOCK_TASKS.filter(
+      (task) => task.status === "In Progress" && task.deadline && isPast(new Date(task.deadline))
     );
 
-    tasksFound = overdueTasks.length;
-
-    if (tasksFound === 0) {
-      return {
-        success: true,
-        message: "No overdue tasks found.",
-        overdueTasksFound: 0,
-        notificationMessages: [],
-      };
-    }
+    const notificationMessages: string[] = [];
+    let overdueTasksFound = 0;
 
     for (const task of overdueTasks) {
-      const manager = MOCK_USERS.find(user => user.id === task.assignerId); 
+      // Find the manager based on assignerId (assuming assigner is the manager)
+      const manager = allUsers.find(user => String(user.id) === String(task.assignerId));
+      
       if (!manager || !manager.email) {
-        overdueTasksProcessed.push(`Could not find manager email for task "${task.title}" (Assigner ID: ${task.assignerId}). Skipped notification.`);
+        notificationMessages.push(`Could not find manager email for task "${task.title}" (Assigner ID: ${task.assignerId}). Skipped notification.`);
         continue;
       }
 
-      const input: NotifyOverdueTaskInput = {
+      const overdueTaskInfo: NotifyOverdueTaskInput = {
         taskId: task.id,
         taskTitle: task.title,
+        deadline: task.deadline!.toISOString(),
         managerEmail: manager.email,
         ceoEmail: CEO_EMAIL,
-        deadline: task.deadline,
       };
-      
-      const notificationResult = await notifyOverdueTask(input);
-      overdueTasksProcessed.push(notificationResult.simulationMessage);
+
+      try {
+        const result: NotifyOverdueTaskOutput = await notifyOverdueTask(overdueTaskInfo);
+        notificationMessages.push(`Notification sent for overdue task "${task.title}": ${result.simulationMessage}`);
+        overdueTasksFound++;
+      } catch (error) {
+        console.error(`Error notifying for overdue task "${task.title}":`, error);
+        notificationMessages.push(`Failed to send notification for overdue task "${task.title}": ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
-    
+
     return {
       success: true,
-      message: `${tasksFound} overdue task(s) processed. See details below.`,
-      overdueTasksFound: tasksFound,
-      notificationMessages: overdueTasksProcessed,
+      message: overdueTasksFound > 0 ? `Found and notified about ${overdueTasksFound} overdue tasks.` : "No overdue tasks found.",
+      overdueTasksFound,
+      notificationMessages,
     };
-
   } catch (error) {
     console.error("Error checking for overdue tasks:", error);
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred while checking for overdue tasks.";
     return {
       success: false,
-      message: `Error processing overdue tasks: ${errorMessage}`,
-      overdueTasksFound: tasksFound,
-      notificationMessages: overdueTasksProcessed, 
+      message: errorMessage,
+      overdueTasksFound: 0,
+      notificationMessages: [],
       errors: { _form: [errorMessage] },
     };
   }

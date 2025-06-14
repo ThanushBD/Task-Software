@@ -3,6 +3,7 @@
 import type { User, UserRole } from '@/types';
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
+import { userAPI } from '@/lib/auth-api'; // Import userAPI from the new file
 
 interface AuthContextType {
   currentUser: User | null;
@@ -16,102 +17,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// API Base URL - adjust this to match your server
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-
-// API functions for user management
-const userAPI = {
-  // Get all users
-  async getAllUsers(): Promise<User[]> {
-    const response = await fetch(`${API_BASE_URL}/users`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to fetch users: ${response.statusText}`);
-    }
-    
-    return response.json();
-  },
-
-  // Login user
-  async loginUser(email: string, password?: string): Promise<{ user: User; token?: string }> {
-    const response = await fetch(`${API_BASE_URL}/auth/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      body: JSON.stringify({ email, password }),
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Login failed: ${response.statusText}`);
-    }
-    
-    return response.json();
-  },
-
-  // Register new user
-  async registerUser(name: string, email: string, role: UserRole, password?: string): Promise<{ user: User; token?: string }> {
-    const response = await fetch(`${API_BASE_URL}/auth/register`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      body: JSON.stringify({ name, email, role, password }),
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Registration failed: ${response.statusText}`);
-    }
-    
-    return response.json();
-  },
-
-  // Logout user
-  async logoutUser(): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/auth/logout`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Logout failed: ${response.statusText}`);
-    }
-  },
-
-  // Verify current session
-  async verifySession(): Promise<User | null> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/auth/me`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-      });
-      
-      if (!response.ok) {
-        return null;
-      }
-      
-      const data = await response.json();
-      return data.user;
-    } catch (error) {
-      console.error('Session verification failed:', error);
-      return null;
-    }
-  }
-};
+// Removed API_BASE_URL and userAPI definition from here
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -158,7 +64,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password?: string): Promise<boolean> => {
     try {
       setLoading(true);
+      console.log('Attempting login with:', { email });
       const { user, token } = await userAPI.loginUser(email, password);
+      console.log('Login response:', { user, token });
       
       setCurrentUser(user);
       

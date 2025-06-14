@@ -1,8 +1,9 @@
 // routes/tasks.ts
 import express, { Request, Response, NextFunction } from 'express';
-import { TaskService, DatabaseError } from '../services/taskService';
-import { validateCreateTask, validateUpdateTask, validatePagination, ValidationError } from '../middleware/validation';
-import { CreateTaskRequest, UpdateTaskRequest, PaginationParams, ApiResponse } from '../types/task';
+import { TaskService } from '../services/taskService';
+import { validateCreateTask, validateUpdateTask, validatePagination } from '../middleware/validation';
+import { ValidationError } from '../utils/errors';
+import { CreateTaskRequest, UpdateTaskRequest, PaginationParams, ApiResponse, Task, TaskStatus, TaskPriority } from '../types/task';
 
 const router = express.Router();
 
@@ -16,11 +17,6 @@ const handleError = (error: Error, req: Request, res: Response, next: NextFuncti
       message: error.message,
       field: error.field
     });
-  } else if (error instanceof DatabaseError) {
-    res.status(500).json({
-      error: 'Database error',
-      message: 'An error occurred while processing your request'
-    });
   } else {
     res.status(500).json({
       error: 'Internal server error',
@@ -30,38 +26,42 @@ const handleError = (error: Error, req: Request, res: Response, next: NextFuncti
 };
 
 // Get all tasks with pagination and filtering
-router.get('/', validatePagination, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
     const params: PaginationParams = {
-      page: req.query.page ? parseInt(req.query.page as string) : 1,
-      limit: req.query.limit ? parseInt(req.query.limit as string) : 10,
-      sortBy: req.query.sortBy as string || 'created_at',
+      page: parseInt(req.query.page as string) || 1,
+      limit: parseInt(req.query.limit as string) || 10,
+      sortBy: (req.query.sortBy as string) || 'created_at',
       sortOrder: (req.query.sortOrder as 'asc' | 'desc') || 'desc',
-      status: req.query.status as any,
-      priority: req.query.priority as any,
-      assignedUserId: req.query.assignedUserId as string,
-      assignerId: req.query.assignerId as string
+      status: req.query.status as TaskStatus | undefined,
+      priority: req.query.priority as TaskPriority | undefined,
+      assigneeId: req.query.assigneeId ? parseInt(req.query.assigneeId as string) : undefined,
+      assignerId: req.query.assignerId ? parseInt(req.query.assignerId as string) : undefined
     };
 
     const result = await TaskService.getAllTasks(params);
     
-    const response: ApiResponse = {
+    res.json({
+      success: true,
       data: {
         tasks: result.tasks,
         pagination: {
+          total: result.total,
           page: result.page,
           limit: result.limit,
-          total: result.total,
           totalPages: Math.ceil(result.total / result.limit),
-          hasNext: result.page * result.limit < result.total,
-          hasPrev: result.page > 1
+          hasNextPage: result.page < Math.ceil(result.total / result.limit),
+          hasPrevPage: result.page > 1
         }
       }
-    };
-
-    res.json(response);
+    });
   } catch (error) {
-    next(error);
+    console.error('Error fetching tasks:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to fetch tasks',
+      message: error instanceof Error ? error.message : 'An unexpected error occurred'
+    });
   }
 });
 
@@ -84,7 +84,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
       });
     }
 
-    const response: ApiResponse = {
+    const response: ApiResponse<Task> = {
       data: task
     };
 
@@ -100,7 +100,7 @@ router.post('/', validateCreateTask, async (req: Request, res: Response, next: N
     const taskData: CreateTaskRequest = req.body;
     const task = await TaskService.createTask(taskData);
     
-    const response: ApiResponse = {
+    const response: ApiResponse<Task> = {
       data: task,
       message: 'Task created successfully'
     };
@@ -115,7 +115,7 @@ router.post('/', validateCreateTask, async (req: Request, res: Response, next: N
 router.put('/:id', validateUpdateTask, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const taskData: UpdateTaskRequest = { ...req.body, id };
+    const taskData: UpdateTaskRequest = req.body;
     
     const task = await TaskService.updateTask(id, taskData);
     
@@ -125,7 +125,7 @@ router.put('/:id', validateUpdateTask, async (req: Request, res: Response, next:
       });
     }
 
-    const response: ApiResponse = {
+    const response: ApiResponse<Task> = {
       data: task,
       message: 'Task updated successfully'
     };
@@ -155,7 +155,7 @@ router.delete('/:id', async (req: Request, res: Response, next: NextFunction) =>
       });
     }
 
-    const response: ApiResponse = {
+    const response: ApiResponse<void> = {
       message: 'Task deleted successfully'
     };
 

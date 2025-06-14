@@ -3,7 +3,7 @@
 import { optimizeTaskDeadline, OptimizeTaskDeadlineInput, OptimizeTaskDeadlineOutput } from "@/ai/flows/optimize-task-deadline";
 import { parseTaskFromText, ParseTaskFromTextInput, ParseTaskFromTextOutput } from "@/ai/flows/parse-task-from-text-flow";
 import { notifyOverdueTask } from "@/ai/flows/notify-overdue-task-flow";
-import { NotifyOverdueTaskInput, NotifyOverdueTaskOutput } from "@/ai/flows/notify-overdue-task-types";
+import type { NotifyOverdueTaskInput, NotifyOverdueTaskOutput } from "@/ai/flows/notify-overdue-task-types";
 import { z } from "zod";
 import { addMockTask, MOCK_USERS, MOCK_TASKS, updateMockTask, CEO_EMAIL, NO_PRIORITY_SELECTED_VALUE } from "@/lib/constants";
 import type { Task, TaskPriority, TaskStatus, User, TaskComment, ConceptualFileAttachment } from "@/types";

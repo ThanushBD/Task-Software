@@ -13,7 +13,12 @@ import { initializeDatabase, checkDatabaseHealth, DatabaseInitError } from './db
 
 // Load environment variables
 dotenv.config();
-
+console.log('🔍 Database config check:');
+console.log('DB_HOST:', process.env.DB_HOST);
+console.log('DB_PORT:', process.env.DB_PORT);
+console.log('DB_NAME:', process.env.DB_NAME);
+console.log('DB_USER:', process.env.DB_USER);
+console.log('DB_PASSWORD:', process.env.DB_PASSWORD ? '***HIDDEN***' : 'NOT SET');
 const app = express();
 const port = process.env.PORT || 5000;
 const isDevelopment = process.env.NODE_ENV !== 'production';
@@ -53,22 +58,37 @@ app.use(compression());
 // CORS configuration
 const corsOptions = {
   origin: isDevelopment 
-    ? ['http://localhost:3000', 'http://localhost:3001'] 
+    ? ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:9002', 'http://localhost:9000'] 
     : process.env.ALLOWED_ORIGINS?.split(',') || ['https://yourdomain.com'],
   credentials: true,
   optionsSuccessStatus: 200,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  exposedHeaders: ['Set-Cookie'],
+  preflightContinue: false,
+  maxAge: 86400 // 24 hours
 };
 
 app.use(cors(corsOptions));
 
+// Cookie parser middleware (for JWT tokens in cookies)
+app.use(cookieParser());
+
+// Add additional headers middleware
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && corsOptions.origin.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,PATCH,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+  next();
+});
+
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// Cookie parser middleware (for JWT tokens in cookies)
-app.use(cookieParser());
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -307,8 +327,7 @@ const startServer = async () => {
           DB_HOST: process.env.DB_HOST,
           DB_PORT: process.env.DB_PORT,
           DB_NAME: process.env.DB_NAME,
-          DB_USER: process.env.DB_USER,
-          NODE_ENV: process.env.NODE_ENV
+          DB_USER: process.env.DB_USER
         });
       }
     });
@@ -322,6 +341,7 @@ const startServer = async () => {
     process.exit(1);
   }
 };
+
 
 // Start the server
 startServer();

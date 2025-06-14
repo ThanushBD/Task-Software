@@ -28,6 +28,15 @@ let users: User[] = [
 // JWT secret (use environment variable in production)
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
+// Add type for authenticated request
+interface AuthenticatedRequest extends express.Request {
+  user: {
+    id: string;
+    email: string;
+    role: UserRole;
+  };
+}
+
 // Middleware to verify JWT token
 const authenticateToken = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   const authHeader = req.headers['authorization'];
@@ -38,12 +47,14 @@ const authenticateToken = (req: express.Request, res: express.Response, next: ex
   const finalToken = token || cookieToken;
 
   if (!finalToken) {
-    return res.sendStatus(401);
+    return res.status(401).json({ error: 'No token provided' });
   }
 
   jwt.verify(finalToken, JWT_SECRET, (err: any, user: any) => {
-    if (err) return res.sendStatus(403);
-    req.user = user;
+    if (err) {
+      return res.status(403).json({ error: 'Invalid or expired token' });
+    }
+    (req as AuthenticatedRequest).user = user;
     next();
   });
 };
@@ -126,11 +137,7 @@ router.post('/login', async (req, res) => {
       if (!passwordMatch) {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
-    } else if (password && !user.password) {
-      // User has no password set, but password was provided
-      return res.status(401).json({ error: 'Invalid credentials' });
     }
-    // If no password provided and user has no password, allow login (like your original logic)
 
     // Generate JWT token
     const token = jwt.sign(
@@ -143,7 +150,7 @@ router.post('/login', async (req, res) => {
     res.cookie('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      sameSite: 'lax',
       maxAge: 24 * 60 * 60 * 1000 // 24 hours
     });
 
@@ -159,32 +166,40 @@ router.post('/login', async (req, res) => {
 
 // POST /api/auth/logout
 router.post('/logout', (req, res) => {
-  res.clearCookie('token');
+  res.clearCookie('token', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax'
+  });
   res.json({ message: 'Logged out successfully' });
 });
 
 // GET /api/auth/me
-router.get('/me', authenticateToken, (req, res) => {
-  if (!req.user) {
-    return res.status(401).json({ error: 'Unauthorized' });
+router.get('/me', authenticateToken, (req: express.Request, res: express.Response) => {
+  try {
+    const authenticatedReq = req as AuthenticatedRequest;
+    const user = users.find(u => u.id === authenticatedReq.user.id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const { password, ...userWithoutPassword } = user;
+    res.json({ user: userWithoutPassword });
+  } catch (error) {
+    console.error('Error fetching user:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
-  const user = users.find(u => u.id === req.user!.id);
-  if (!user) {
-    return res.status(404).json({ error: 'User not found' });
-  }
-
-  const { password: _, ...userWithoutPassword } = user;
-  res.json({ user: userWithoutPassword });
 });
 
 // GET /api/users
-router.get('/users', authenticateToken, (req, res) => {
-  if (!req.user) {
-    return res.status(401).json({ error: 'Unauthorized' });
+router.get('/users', authenticateToken, (req: express.Request, res: express.Response) => {
+  try {
+    // Return users without passwords
+    const usersWithoutPasswords = users.map(({ password, ...user }) => user);
+    res.json(usersWithoutPasswords);
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
-  // Return all users without passwords
-  const usersWithoutPasswords = users.map(({ password, ...user }) => user);
-  res.json(usersWithoutPasswords);
 });
 
 export default router;

@@ -11,6 +11,7 @@ import { revalidatePath } from "next/cache";
 import { format, isPast, parseISO } from "date-fns";
 import { userAPI } from "@/lib/auth-api";
 import { headers } from "next/headers";
+import { createTask } from '@/lib/api';
 
 
 // --- Suggest Deadline Action ---
@@ -166,7 +167,6 @@ export async function adminCreateTaskAction(
   prevState: AdminCreateTaskActionState,
   formData: FormData
 ): Promise<AdminCreateTaskActionState> {
-
   const validatedFields = AdminCreateTaskFormSchema.safeParse({
     title: formData.get("title"),
     description: formData.get("description"),
@@ -179,11 +179,11 @@ export async function adminCreateTaskAction(
   if (!validatedFields.success) {
     return {
       success: false,
-      errors: validatedFields.error.flatten().fieldErrors,
       message: "Validation failed. Please check all required task details.",
+      errors: validatedFields.error.flatten().fieldErrors,
     };
   }
-  
+
   const { title, description, deadline, priority, assignedUserId, timerDuration } = validatedFields.data;
 
   const assignedUserIdNumber = Number(assignedUserId);
@@ -195,42 +195,32 @@ export async function adminCreateTaskAction(
     };
   }
 
+  console.log("adminCreateTaskAction: assignedUserId from form data:", assignedUserId);
   console.log("adminCreateTaskAction: Assigned user ID for lookup:", assignedUserIdNumber);
 
   const cookieHeader = (await headers()).get("cookie") || undefined;
-  const currentUser = await userAPI.verifySession(cookieHeader);
-
-  if (!currentUser || currentUser.role !== 'Admin') {
-    return {
-      success: false,
-      message: "Unauthorized: Only administrators can create tasks.",
-      errors: { _form: ["You do not have permission to perform this action."] },
-    };
-  }
-
   const allUsers = await userAPI.getAllUsers(cookieHeader);
-  console.log("adminCreateTaskAction: allUsers from backend:", allUsers);
   const assignee = allUsers.find(user => Number(user.id) === assignedUserIdNumber);
   console.log("adminCreateTaskAction: found assignee:", assignee);
-   if (!assignee) { 
+
+  if (!assignee) {
     return {
       success: false,
       message: "Assigned user not found.",
-      errors: { assignedUserId: ["Invalid user selected for assignment."] },
+      errors: { assignedUserId: ["The selected user does not exist."] },
     };
   }
 
-  // Ensure deadline is a valid Date object
-  if (!(deadline instanceof Date) || isNaN(deadline.getTime())) {
+  const currentUser = await userAPI.verifySession(cookieHeader);
+  if (!currentUser) {
     return {
       success: false,
-      message: "Invalid deadline date provided.",
-      errors: { deadline: ["Please provide a valid deadline date."] },
+      message: "Current user not found.",
+      errors: { _form: ["You must be logged in to create a task."] },
     };
   }
 
-  const newTask: Task = {
-    id: `task-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+  const newTask: Omit<Task, 'id'> = {
     title,
     description: description || null,
     status: "To Do" as TaskStatus,
@@ -243,7 +233,7 @@ export async function adminCreateTaskAction(
     assignedUserId: Number(assignee.id),
     updatedBy: Number(currentUser.id),
     suggestedPriority: null,
-    suggestedDeadline: null, 
+    suggestedDeadline: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     completedAt: null,
@@ -264,13 +254,13 @@ export async function adminCreateTaskAction(
   };
 
   try {
-    addMockTask(newTask); 
-    revalidatePath("/"); 
-    revalidatePath("/admin"); 
+    const createdTask = await createTask(newTask);
+    revalidatePath("/");
+    revalidatePath("/admin");
 
     return {
       success: true,
-      task: newTask,
+      task: createdTask,
       message: `Task "${newTask.title}" created by ${currentUser.firstName} ${currentUser.lastName}, assigned to ${assignee.firstName} ${assignee.lastName}. Deadline: ${newTask.deadline ? format(newTask.deadline, "PPP") : 'N/A'}. Timer: ${newTask.timerDuration} min.`,
     };
   } catch (error) {

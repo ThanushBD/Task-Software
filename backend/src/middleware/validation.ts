@@ -57,7 +57,7 @@ export const validateCreateTask = (req: Request, res: Response, next: NextFuncti
       throw new ValidationError('Assigned user ID must be a number', 'assignedUserId');
     }
 
-    if (taskData.suggestedPriority !== undefined && !VALID_TASK_PRIORITIES.includes(taskData.suggestedPriority)) {
+    if (taskData.suggestedPriority !== undefined && taskData.suggestedPriority !== null && !VALID_TASK_PRIORITIES.includes(taskData.suggestedPriority)) {
       throw new ValidationError('Invalid suggested priority value', 'suggestedPriority');
     }
 
@@ -145,7 +145,7 @@ export const validateUpdateTask = (req: Request, res: Response, next: NextFuncti
       throw new ValidationError('Assigned user ID must be a number', 'assignedUserId');
     }
 
-    if (taskData.suggestedPriority !== undefined && !VALID_TASK_PRIORITIES.includes(taskData.suggestedPriority)) {
+    if (taskData.suggestedPriority !== undefined && taskData.suggestedPriority !== null && !VALID_TASK_PRIORITIES.includes(taskData.suggestedPriority)) {
       throw new ValidationError('Invalid suggested priority value', 'suggestedPriority');
     }
 

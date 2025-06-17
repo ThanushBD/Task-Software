@@ -34,7 +34,7 @@ function SubmitButton() {
 }
 
 export function CreateTaskForm({ assignableUsers }: CreateTaskFormProps) {
-  const initialState: AdminCreateTaskActionState = { success: false };
+  const initialState: AdminCreateTaskActionState = { success: false, message: undefined, errors: undefined };
   const [state, formAction] = useActionState(adminCreateTaskAction, initialState);
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
@@ -165,7 +165,7 @@ export function CreateTaskForm({ assignableUsers }: CreateTaskFormProps) {
               required
             />
           </div>
-          {state.errors?.timerDuration && <p className="text-sm text-destructive mt-1\">{state.errors.timerDuration.join(", ")}</p>}
+          {state.errors?.timerDuration && <p className="text-sm text-destructive mt-1">{state.errors.timerDuration.join(", ")}</p>}
         </div>
       </div>
 

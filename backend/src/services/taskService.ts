@@ -175,10 +175,10 @@ export class TaskService {
       const taskResult = await client.query(
         `INSERT INTO tasks (
           title, description, status, priority, deadline,
-          progress_percentage, project_id, recurring_pattern,
+          progress_percentage, recurring_pattern,
           assigner_id, assigned_user_id, suggested_priority,
           suggested_deadline
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         RETURNING *`,
         [
           taskData.title,
@@ -187,7 +187,6 @@ export class TaskService {
           taskData.priority || 'Medium',
           taskData.deadline || null,
           taskData.progressPercentage || 0,
-          taskData.projectId || null,
           taskData.recurringPattern || null,
           taskData.assignerId,
           taskData.assignedUserId || null,

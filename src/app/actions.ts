@@ -5,13 +5,13 @@ import { parseTaskFromText, ParseTaskFromTextInput, ParseTaskFromTextOutput } fr
 import { notifyOverdueTask } from "@/ai/flows/notify-overdue-task-flow";
 import type { NotifyOverdueTaskInput, NotifyOverdueTaskOutput } from "@/ai/flows/notify-overdue-task-types";
 import { z } from "zod";
-import { addMockTask, MOCK_TASKS, updateMockTask, CEO_EMAIL, NO_PRIORITY_SELECTED_VALUE } from "@/lib/constants";
+import { CEO_EMAIL, NO_PRIORITY_SELECTED_VALUE } from "@/lib/constants";
 import type { Task, TaskPriority, TaskStatus, User, TaskComment, ConceptualFileAttachment } from "@/types";
 import { revalidatePath } from "next/cache";
 import { format, isPast, parseISO } from "date-fns";
 import { userAPI } from "@/lib/auth-api";
 import { headers } from "next/headers";
-import { createTask } from '@/lib/api';
+import { createTask, updateTask, fetchTaskById, fetchTasks } from '@/lib/api';
 
 
 // --- Suggest Deadline Action ---
@@ -225,7 +225,7 @@ export async function adminCreateTaskAction(
     description: description || null,
     status: "To Do" as TaskStatus,
     priority: priority as TaskPriority,
-    deadline: deadline,
+    deadline: deadline.toISOString(),
     progressPercentage: 0,
     projectId: null,
     recurringPattern: null,
@@ -323,7 +323,8 @@ export async function createUserTaskAction(
 
   const { title, description, creatorId, creatorName, suggestedDeadline, suggestedPriority: rawSuggestedPriority } = validatedFields.data;
 
-  const creatorUser = await userAPI.verifySession();
+  const cookieHeader = (await headers()).get("cookie") || undefined;
+  const creatorUser = await userAPI.verifySession(cookieHeader);
   if (!creatorUser || String(creatorUser.id) !== creatorId) {
     return {
       success: false,
@@ -340,12 +341,11 @@ export async function createUserTaskAction(
     finalSuggestedPriorityAttribute = rawSuggestedPriority as TaskPriority;
   }
 
-  const newTask: Task = {
-    id: `task-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+  const newTask: Omit<Task, 'id'> = {
     title,
     description: description || null,
     status: "Pending Approval" as TaskStatus,
-    deadline: suggestedDeadline ? new Date(suggestedDeadline) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    deadline: suggestedDeadline ? new Date(suggestedDeadline).toISOString() : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
     priority: finalTaskPriority,
     progressPercentage: 0,
     projectId: null,
@@ -362,7 +362,7 @@ export async function createUserTaskAction(
     timerDuration: 0,
     attachments: [],
     comments: [],
-    suggestedDeadline: suggestedDeadline ? new Date(suggestedDeadline) : null,
+    suggestedDeadline: suggestedDeadline ? new Date(suggestedDeadline).toISOString() : null,
     suggestedPriority: finalSuggestedPriorityAttribute,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -371,13 +371,13 @@ export async function createUserTaskAction(
   };
 
   try {
-    addMockTask(newTask);
+    const createdTask = await createTask(newTask);
     revalidatePath("/");
     revalidatePath("/admin"); 
 
     return {
       success: true,
-      task: newTask,
+      task: createdTask,
       message: `Task "${newTask.title}" submitted for approval by ${creatorUser.name || creatorUser.email}.`,
     };
   } catch (error) {
@@ -418,6 +418,20 @@ export interface ApproveTaskActionState {
   };
 }
 
+// Add a utility function for API error handling
+function handleApiError(error: unknown): { message: string; details?: string } {
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      details: error.stack
+    };
+  }
+  return {
+    message: 'An unexpected error occurred',
+    details: String(error)
+  };
+}
+
 export async function approveTaskAction(
   prevState: ApproveTaskActionState,
   formData: FormData
@@ -452,12 +466,12 @@ export async function approveTaskAction(
     };
   }
 
-  const taskToUpdate = MOCK_TASKS.find((task) => task.id === taskId);
+  const taskToUpdate = await fetchTaskById(taskId);
   if (!taskToUpdate) {
     return {
       success: false,
       message: "Task not found.",
-      errors: { taskId: ["Invalid task ID."] },
+      errors: { taskId: ["Invalid task selected for approval."] },
     };
   }
 
@@ -472,35 +486,32 @@ export async function approveTaskAction(
     };
   }
 
-  const updatedTask: Task = {
-    ...taskToUpdate,
-    status: "Approved" as TaskStatus,
-    priority: priority === NO_PRIORITY_SELECTED_VALUE ? "Medium" : (priority as TaskPriority),
-    deadline: deadline,
-    assignedUserId: assignee ? Number(assignee.id) : taskToUpdate.assignedUserId,
-    assignee: assignee ? { id: Number(assignee.id), firstName: assignee.firstName || '', lastName: assignee.lastName || '' } : taskToUpdate.assignee,
+  const updatedTask = await updateTask(taskId, {
+    status: "In Progress" as TaskStatus,
+    priority: priority as TaskPriority,
+    deadline: deadline ? new Date(deadline).toISOString() : null,
+    assignedUserId: assignee?.id ? Number(assignee.id) : null,
     updatedBy: Number(currentUser.id),
     updatedAt: new Date().toISOString(),
-    timerDuration: timerDuration ? timerDuration : taskToUpdate.timerDuration,
-  };
+    timerDuration: Number(timerDuration),
+  });
 
   try {
-    updateMockTask(updatedTask);
     revalidatePath("/");
     revalidatePath("/admin");
 
     return {
       success: true,
       task: updatedTask,
-      message: `Task "${updatedTask.title}" approved and assigned to ${updatedTask.assignee?.firstName} ${updatedTask.assignee?.lastName}. Deadline: ${updatedTask.deadline ? format(updatedTask.deadline, "PPP") : 'N/A'}.`,
+      message: `Task "${updatedTask.title}" has been approved and assigned to ${assignee?.firstName} ${assignee?.lastName}.`,
     };
   } catch (error) {
-    console.error("Error approving task:", error);
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred while approving the task.";
+    const { message, details } = handleApiError(error);
+    console.error("Error approving task:", details);
     return {
       success: false,
-      message: errorMessage,
-      errors: { _form: [errorMessage] },
+      message,
+      errors: { _form: [message] },
     };
   }
 }
@@ -545,7 +556,8 @@ export async function requestRevisionsAction(
 
   const { taskId, reviserId, comment } = validatedFields.data;
 
-  const reviser = await userAPI.verifySession();
+  const cookieHeader = (await headers()).get("cookie") || undefined;
+  const reviser = await userAPI.verifySession(cookieHeader);
   if (!reviser || reviser.role !== 'Admin' || String(reviser.id) !== reviserId) {
     return {
       success: false,
@@ -555,8 +567,8 @@ export async function requestRevisionsAction(
     };
   }
 
-  const taskIndex = MOCK_TASKS.findIndex(task => task.id === taskId);
-  if (taskIndex === -1) {
+  const taskToRevise = await fetchTaskById(taskId);
+  if (!taskToRevise) {
     return {
       success: false,
       message: "Task not found.",
@@ -565,7 +577,6 @@ export async function requestRevisionsAction(
     };
   }
 
-  const taskToRevise = MOCK_TASKS[taskIndex];
   if (taskToRevise.status !== "Pending Approval") {
     return {
       success: false,
@@ -581,21 +592,19 @@ export async function requestRevisionsAction(
     createdAt: new Date().toISOString(),
     user: {
       id: Number(reviser.id),
-      firstName: reviser.name?.split(' ')[0] || '',
-      lastName: reviser.name?.split(' ').slice(1).join(' ') || '',
+      firstName: reviser.firstName || '',
+      lastName: reviser.lastName || '',
     },
   };
 
-  const revisedTask: Task = {
-    ...taskToRevise,
+  const revisedTask = await updateTask(taskId, {
     status: "Needs Changes" as TaskStatus,
     comments: [...(taskToRevise.comments || []), newCommentEntry],
     updatedBy: Number(reviser.id),
     updatedAt: new Date().toISOString(),
-  };
+  });
 
   try {
-    updateMockTask(revisedTask);
     revalidatePath("/");
     revalidatePath("/admin");
 
@@ -605,12 +614,12 @@ export async function requestRevisionsAction(
       message: `Revisions requested for task "${revisedTask.title}".`,
     };
   } catch (error) {
-    console.error("Error requesting revisions:", error);
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+    const { message, details } = handleApiError(error);
+    console.error("Error requesting revisions:", details);
     return {
       success: false,
-      message: errorMessage,
-      errors: { _form: [errorMessage] },
+      message,
+      errors: { _form: [message] },
     };
   }
 }
@@ -651,7 +660,8 @@ export async function rejectTaskAction(
 
   const { taskId, rejecterId } = validatedFields.data;
 
-  const rejecter = await userAPI.verifySession();
+  const cookieHeader = (await headers()).get("cookie") || undefined;
+  const rejecter = await userAPI.verifySession(cookieHeader);
   if (!rejecter || rejecter.role !== 'Admin' || String(rejecter.id) !== rejecterId) {
     return {
       success: false,
@@ -661,8 +671,8 @@ export async function rejectTaskAction(
     };
   }
 
-  const taskIndex = MOCK_TASKS.findIndex(task => task.id === taskId);
-  if (taskIndex === -1) {
+  const taskToReject = await fetchTaskById(taskId);
+  if (!taskToReject) {
     return {
       success: false,
       message: "Task not found.",
@@ -671,7 +681,6 @@ export async function rejectTaskAction(
     };
   }
   
-  const taskToReject = MOCK_TASKS[taskIndex];
   if (taskToReject.status !== "Pending Approval" && taskToReject.status !== "Needs Changes") {
      return {
       success: false,
@@ -681,15 +690,13 @@ export async function rejectTaskAction(
     };
   }
 
-  const rejectedTask: Task = {
-    ...taskToReject,
+  const rejectedTask = await updateTask(taskId, {
     status: "Rejected" as TaskStatus,
     updatedBy: Number(rejecter.id),
     updatedAt: new Date().toISOString(),
-  };
+  });
 
   try {
-    updateMockTask(rejectedTask);
     revalidatePath("/");
     revalidatePath("/admin");
 
@@ -699,12 +706,12 @@ export async function rejectTaskAction(
       message: `Task "${rejectedTask.title}" has been rejected.`,
     };
   } catch (error) {
-    console.error("Error rejecting task:", error);
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+    const { message, details } = handleApiError(error);
+    console.error("Error rejecting task:", details);
     return {
       success: false,
-      message: errorMessage,
-      errors: { _form: [errorMessage] },
+      message,
+      errors: { _form: [message] },
     };
   }
 }
@@ -752,7 +759,8 @@ export async function resubmitTaskAction(
 
   const { taskId, title, description, userId } = validatedFields.data;
 
-  const user = await userAPI.verifySession();
+  const cookieHeader = (await headers()).get("cookie") || undefined;
+  const user = await userAPI.verifySession(cookieHeader);
   if (!user || String(user.id) !== userId) {
     return {
       success: false,
@@ -761,9 +769,9 @@ export async function resubmitTaskAction(
       errors: { _form: ["Invalid user attempting to resubmit."] },
     };
   }
-  
-  const taskIndex = MOCK_TASKS.findIndex(task => task.id === taskId);
-  if (taskIndex === -1) {
+
+  const taskToResubmit = await fetchTaskById(taskId);
+  if (!taskToResubmit) {
     return {
       success: false,
       message: "Task not found.",
@@ -771,8 +779,6 @@ export async function resubmitTaskAction(
       errors: { _form: ["The specified task does not exist."] },
     };
   }
-
-  const taskToResubmit = MOCK_TASKS[taskIndex];
 
   if (taskToResubmit.assignerId !== Number(user.id)) {
      return {
@@ -792,17 +798,15 @@ export async function resubmitTaskAction(
     };
   }
 
-  const resubmittedTask: Task = {
-    ...taskToResubmit,
+  const resubmittedTask = await updateTask(taskId, {
     title,
     description: description || null,
     status: "Pending Approval" as TaskStatus,
     updatedBy: Number(user.id),
     updatedAt: new Date().toISOString(),
-  };
+  });
 
   try {
-    updateMockTask(resubmittedTask);
     revalidatePath("/");
     revalidatePath("/admin");
 
@@ -812,12 +816,12 @@ export async function resubmitTaskAction(
       message: `Task "${resubmittedTask.title}" has been resubmitted for approval.`,
     };
   } catch (error) {
-    console.error("Error resubmitting task:", error);
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+    const { message, details } = handleApiError(error);
+    console.error("Error resubmitting task:", details);
     return {
       success: false,
-      message: errorMessage,
-      errors: { _form: [errorMessage] },
+      message,
+      errors: { _form: [message] },
     };
   }
 }
@@ -837,18 +841,18 @@ export async function checkForOverdueTasksAction(
   try {
     const cookieHeader = (await headers()).get("cookie") || undefined;
     const allUsers = await userAPI.getAllUsers(cookieHeader);
-    
-    const overdueTasks: Task[] = MOCK_TASKS.filter(
-      (task) => task.status === "In Progress" && task.deadline && isPast(new Date(task.deadline))
+
+    const allTasks = await fetchTasks({ status: "In Progress" });
+    const overdueTasks = allTasks.tasks.filter(
+      (task) => task.deadline && isPast(new Date(task.deadline))
     );
 
     const notificationMessages: string[] = [];
     let overdueTasksFound = 0;
 
     for (const task of overdueTasks) {
-      // Find the manager based on assignerId (assuming assigner is the manager)
       const manager = allUsers.find(user => String(user.id) === String(task.assignerId));
-      
+
       if (!manager || !manager.email) {
         notificationMessages.push(`Could not find manager email for task "${task.title}" (Assigner ID: ${task.assignerId}). Skipped notification.`);
         continue;
@@ -857,7 +861,7 @@ export async function checkForOverdueTasksAction(
       const overdueTaskInfo: NotifyOverdueTaskInput = {
         taskId: task.id,
         taskTitle: task.title,
-        deadline: task.deadline!.toISOString(),
+        deadline: task.deadline!,
         managerEmail: manager.email,
         ceoEmail: CEO_EMAIL,
       };

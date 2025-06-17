@@ -36,7 +36,7 @@ export interface Task {
   description: string | null;
   status: TaskStatus;
   priority: TaskPriority;
-  deadline: Date | null;
+  deadline: string | null;
   progressPercentage: number;
   projectId: number | null;
   recurringPattern: any | null;
@@ -44,7 +44,7 @@ export interface Task {
   assignedUserId: number | null;
   updatedBy: number | null;
   suggestedPriority: TaskPriority | null;
-  suggestedDeadline: Date | null;
+  suggestedDeadline: string | null;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;

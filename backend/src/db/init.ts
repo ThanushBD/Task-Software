@@ -1,8 +1,9 @@
-// db/init.ts
 import { Pool, PoolClient } from 'pg';
 import * as fs from 'fs';
 import * as path from 'path';
 import dotenv from 'dotenv';
+import bcrypt from 'bcrypt';
+import { v4 as uuidv4 } from 'uuid';
 
 dotenv.config();
 
@@ -260,88 +261,78 @@ function makeStatementIdempotent(statement: string, existingObjects: any): strin
   return statement;
 }
 
+async function seedDefaultUser(client: PoolClient): Promise<void> {
+  try {
+    const checkUserQuery = 'SELECT COUNT(*) FROM users';
+    const userCountResult = await client.query(checkUserQuery);
+    const userCount = parseInt(userCountResult.rows[0].count);
+
+    if (userCount === 0) {
+      console.log('🌱 No users found, seeding default admin user...');
+      const hashedPassword = await bcrypt.hash('adminpassword', 10); // Hash a default password
+      const adminId = uuidv4();
+      const insertUserQuery = `
+        INSERT INTO users (id, email, password_hash, first_name, last_name, role, is_active, email_verified)
+        VALUES ($1, $2, $3, $4, $5, $6, TRUE, TRUE)
+        RETURNING id;
+      `;
+      await client.query(insertUserQuery, [
+        adminId,
+        'admin@example.com',
+        hashedPassword,
+        'Admin',
+        'User',
+        'Admin',
+      ]);
+      console.log('✅ Default admin user seeded (admin@example.com / adminpassword)');
+    } else {
+      console.log(`✅ ${userCount} users already exist, skipping default user seeding.`);
+    }
+  } catch (error) {
+    throw new DatabaseInitError('Failed to seed default user', error instanceof Error ? error : undefined);
+  }
+}
+
 export async function initializeDatabase(): Promise<void> {
   const client = await pool.connect();
   
   try {
     console.log('🔄 Initializing database...');
     
-    await client.query('SELECT NOW()');
-    console.log('✅ Database connection established');
+    await client.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
+
+    const schemaPath = path.join(__dirname, 'schema.sql');
+    const schemaSql = fs.readFileSync(schemaPath, 'utf8');
+    const statements = smartSqlSplit(schemaSql);
 
     const existingObjects = await checkDatabaseObjects(client);
     console.log('📋 Existing database objects:', {
       enumTypes: existingObjects.enumTypes.length,
       tables: existingObjects.tables.length,
       functions: existingObjects.functions.length,
-      indexes: existingObjects.indexes.length
+      indexes: existingObjects.indexes.length,
     });
 
-    const schemaPath = path.join(__dirname, 'schema.sql');
-    
-    if (!fs.existsSync(schemaPath)) {
-      throw new DatabaseInitError(`Schema file not found at: ${schemaPath}`);
-    }
+    let executedCount = 0;
+    let skippedCount = 0;
 
-    const schema = fs.readFileSync(schemaPath, 'utf8');
-    
-    if (!schema.trim()) {
-      throw new DatabaseInitError('Schema file is empty');
-    }
-
-    await client.query('BEGIN');
-    
-    try {
-      const statements = smartSqlSplit(schema);
-      const processedStatements = statements.map(stmt => 
-        makeStatementIdempotent(stmt, existingObjects)
-      );
-
-      console.log(`📝 Executing ${processedStatements.length} SQL statements...`);
-
-      let executedCount = 0;
-      let skippedCount = 0;
-
-      for (let i = 0; i < processedStatements.length; i++) {
-        const statement = processedStatements[i];
-        if (statement.trim()) {
-          try {
-            if (statement.trim().startsWith('-- SKIPPED:')) {
-              skippedCount++;
-              console.log(`⏭️  Statement ${i + 1}/${processedStatements.length} skipped (already exists)`);
-            } else {
-              console.log(`🔍 Executing statement ${i + 1}: ${statement.trim().substring(0, 150)}...`);
-              await client.query(statement);
-              executedCount++;
-              console.log(`✅ Statement ${i + 1}/${processedStatements.length} executed successfully`);
-            }
-          } catch (error) {
-            console.error(`❌ Error in statement ${i + 1}:`, statement.substring(0, 100) + '...');
-            console.error('Error details:', error);
-            throw error;
-          }
-        }
+    for (const statement of statements) {
+      const idempotentStatement = makeStatementIdempotent(statement, existingObjects);
+      if (!idempotentStatement.startsWith('-- SKIPPED:')) {
+        await client.query(idempotentStatement);
+        console.log(`✅ Statement ${++executedCount}/${statements.length} executed successfully`);
+      } else {
+        console.log(`📝 Skipped statement ${++skippedCount}/${statements.length}`);
       }
-      
-      await client.query('COMMIT');
-      console.log(`✅ Database schema initialized successfully (${executedCount} executed, ${skippedCount} skipped)`);
-      
-      await verifyTables(client);
-      
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
     }
+
+    console.log(`✅ Database schema initialized successfully (${executedCount} executed, ${skippedCount} skipped)`);
     
+    await verifyTables(client); // Verify all required tables and enums are present
+    await seedDefaultUser(client); // Seed default admin user
+
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('❌ Error initializing database:', errorMessage);
-    
-    if (error instanceof DatabaseInitError) {
-      throw error;
-    } else {
-      throw new DatabaseInitError('Failed to initialize database', error instanceof Error ? error : undefined);
-    }
+    throw new DatabaseInitError('Failed to initialize database', error instanceof Error ? error : undefined);
   } finally {
     client.release();
   }
@@ -395,38 +386,17 @@ export async function resetDatabase(): Promise<void> {
   
   try {
     console.log('🔄 Resetting database...');
-    
-    await client.query('BEGIN');
-    
-    const dropQueries = [
-      'DROP VIEW IF EXISTS task_dashboard CASCADE', //
-      'DROP VIEW IF EXISTS active_tasks CASCADE', //
-      'DROP TABLE IF EXISTS user_sessions CASCADE', //
-      'DROP TABLE IF EXISTS notifications CASCADE', //
-      'DROP TABLE IF EXISTS task_activity_log CASCADE', //
-      'DROP TABLE IF EXISTS task_dependencies CASCADE', //
-      'DROP TABLE IF EXISTS task_comments CASCADE', //
-      'DROP TABLE IF EXISTS task_attachments CASCADE',  //
-      'DROP TABLE IF EXISTS tasks CASCADE', //
-      'DROP TABLE IF EXISTS users CASCADE', //
-      'DROP TYPE IF EXISTS task_status CASCADE', //
-      'DROP TYPE IF EXISTS task_priority CASCADE', //
-      'DROP TYPE IF EXISTS user_role CASCADE', //
-      'DROP TYPE IF EXISTS notification_type CASCADE', //
-      'DROP FUNCTION IF EXISTS update_updated_at_column() CASCADE', //
-    ];
-    
-    for (const query of dropQueries) {
-      await client.query(query);
-    }
-    
-    await client.query('COMMIT');
+    // Drop all tables
+    await client.query(`
+      DROP SCHEMA public CASCADE;
+      CREATE SCHEMA public;
+      GRANT ALL ON SCHEMA public TO postgres;
+      GRANT ALL ON SCHEMA public TO public;
+    `);
     console.log('✅ Database reset completed');
-    
     await initializeDatabase();
     
   } catch (error) {
-    await client.query('ROLLBACK');
     throw new DatabaseInitError('Failed to reset database', error instanceof Error ? error : undefined);
   } finally {
     client.release();

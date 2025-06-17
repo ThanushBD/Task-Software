@@ -24,7 +24,7 @@ export interface TaskComment {
   content: string;
   createdAt: string;
   user: {
-    id: number;
+    id: string;
     firstName: string;
     lastName: string;
   };
@@ -38,11 +38,11 @@ export interface Task {
   priority: TaskPriority;
   deadline: string | null;
   progressPercentage: number;
-  projectId: number | null;
+  projectId: string | null;
   recurringPattern: any | null;
-  assignerId: number;
-  assignedUserId: number | null;
-  updatedBy: number | null;
+  assignerId: string;
+  assignedUserId: string | null;
+  updatedBy: string | null;
   suggestedPriority: TaskPriority | null;
   suggestedDeadline: string | null;
   createdAt: string;
@@ -52,12 +52,12 @@ export interface Task {
   timerDuration: number;
   // Nested objects from joins
   assignee?: {
-    id: number;
+    id: string;
     firstName: string;
     lastName: string;
   };
   assigner?: {
-    id: number;
+    id: string;
     firstName: string;
     lastName: string;
   };
@@ -69,11 +69,11 @@ export interface Task {
 export type UserRole = "Admin" | "User";
 
 export interface User {
-  id: number;
+  id: string;
   email: string;
   firstName: string;
   lastName: string;
-  name?: string; // Optional: Keep if `name` is still used in some contexts, but `firstName`/`lastName` are primary
+  name?: string;
   role: UserRole;
   password?: string;
 }

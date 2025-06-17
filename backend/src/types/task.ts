@@ -57,14 +57,15 @@ export interface CreateTaskRequest {
   description?: string;
   status?: TaskStatus;
   priority?: TaskPriority;
-  deadline?: Date;
+  deadline?: string;
   progressPercentage?: number;
   projectId?: number;
-  recurringPattern?: any;
-  assignerId: number;
-  assignedUserId?: number;
+  recurringPattern?: string;
+  assignerId: string;
+  assignedUserId?: string;
   suggestedPriority?: TaskPriority;
-  suggestedDeadline?: Date;
+  suggestedDeadline?: string;
+  timerDuration?: number;
   attachments?: Omit<TaskAttachment, 'id' | 'createdAt'>[];
 }
 
@@ -85,6 +86,7 @@ export interface UpdateTaskRequest {
 }
 
 export interface ApiResponse<T> {
+  success: boolean;
   data?: T;
   error?: string;
   message?: string;

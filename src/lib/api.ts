@@ -28,8 +28,10 @@ async function handleResponse<T>(response: Response): Promise<T> {
     throw new Error(`API Error: ${response.status} - ${JSON.stringify(error)}`);
   }
   const data: ApiResponse<T> = await response.json();
+  console.log('handleResponse: Received data:', data);
   if (!data.success) {
-    throw new Error(data.error || 'Unknown error occurred');
+    console.error('handleResponse: API response indicates failure:', data.error || data.message);
+    throw new Error(data.error || data.message || 'Unknown error occurred');
   }
   return data.data;
 }

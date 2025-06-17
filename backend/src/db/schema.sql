@@ -98,17 +98,20 @@ CREATE TABLE IF NOT EXISTS tasks (
     status task_status NOT NULL DEFAULT 'Pending Approval',
     priority task_priority NOT NULL DEFAULT 'Medium',
     deadline TIMESTAMPTZ,
+    progress_percentage INTEGER NOT NULL DEFAULT 0,
+    recurring_pattern TEXT,
     project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
     assigner_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     assigned_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
     suggested_priority task_priority,
     suggested_deadline TIMESTAMPTZ,
+    timer_duration INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMPTZ,
     soft_deleted_at TIMESTAMPTZ,
-    CONSTRAINT title_not_empty_check CHECK (length(trim(title)) > 0)
+    CONSTRAINT title_not_empty_check CHECK (title IS NOT NULL AND length(trim(title)) > 0)
 );
 
 CREATE TABLE IF NOT EXISTS task_comments (

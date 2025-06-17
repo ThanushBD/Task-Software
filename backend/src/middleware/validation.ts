@@ -19,8 +19,8 @@ export const validateCreateTask = (req: Request, res: Response, next: NextFuncti
       throw new ValidationError('Title is required and must be a non-empty string', 'title');
     }
 
-    if (!taskData.assignerId || typeof taskData.assignerId !== 'number') {
-      throw new ValidationError('Assigner ID is required and must be a number', 'assignerId');
+    if (!taskData.assignerId || typeof taskData.assignerId !== 'string') {
+      throw new ValidationError('Assigner ID is required and must be a string (UUID)', 'assignerId');
     }
 
     // Validate optional fields
@@ -41,20 +41,19 @@ export const validateCreateTask = (req: Request, res: Response, next: NextFuncti
       if (isNaN(date.getTime())) {
         throw new ValidationError('Deadline must be a valid date', 'deadline');
       }
-      // Convert to Date object for consistency
-      taskData.deadline = date;
+      // Do not assign Date object, just validate
     }
 
     if (taskData.progressPercentage !== undefined && (typeof taskData.progressPercentage !== 'number' || taskData.progressPercentage < 0 || taskData.progressPercentage > 100)) {
       throw new ValidationError('Progress percentage must be a number between 0 and 100', 'progressPercentage');
     }
 
-    if (taskData.projectId !== undefined && taskData.projectId !== null && typeof taskData.projectId !== 'number') {
-      throw new ValidationError('Project ID must be a number or null', 'projectId');
+    if (taskData.projectId !== undefined && taskData.projectId !== null && typeof taskData.projectId !== 'string') {
+      throw new ValidationError('Project ID must be a string (UUID) or null', 'projectId');
     }
 
-    if (taskData.assignedUserId !== undefined && typeof taskData.assignedUserId !== 'number') {
-      throw new ValidationError('Assigned user ID must be a number', 'assignedUserId');
+    if (taskData.assignedUserId !== undefined && typeof taskData.assignedUserId !== 'string') {
+      throw new ValidationError('Assigned user ID must be a string (UUID)', 'assignedUserId');
     }
 
     if (taskData.suggestedPriority !== undefined && taskData.suggestedPriority !== null && !VALID_TASK_PRIORITIES.includes(taskData.suggestedPriority)) {
@@ -66,8 +65,7 @@ export const validateCreateTask = (req: Request, res: Response, next: NextFuncti
       if (isNaN(date.getTime())) {
         throw new ValidationError('Suggested deadline must be a valid date', 'suggestedDeadline');
       }
-      // Convert to Date object for consistency
-      taskData.suggestedDeadline = date;
+      // Do not assign Date object, just validate
     }
 
     // Validate attachments if present
@@ -129,20 +127,19 @@ export const validateUpdateTask = (req: Request, res: Response, next: NextFuncti
       if (isNaN(date.getTime())) {
         throw new ValidationError('Deadline must be a valid date', 'deadline');
       }
-      // Convert to Date object for consistency
-      taskData.deadline = date;
+      // Do not assign Date object, just validate
     }
 
     if (taskData.progressPercentage !== undefined && (typeof taskData.progressPercentage !== 'number' || taskData.progressPercentage < 0 || taskData.progressPercentage > 100)) {
       throw new ValidationError('Progress percentage must be a number between 0 and 100', 'progressPercentage');
     }
 
-    if (taskData.projectId !== undefined && taskData.projectId !== null && typeof taskData.projectId !== 'number') {
-      throw new ValidationError('Project ID must be a number or null', 'projectId');
+    if (taskData.projectId !== undefined && taskData.projectId !== null && typeof taskData.projectId !== 'string') {
+      throw new ValidationError('Project ID must be a string (UUID) or null', 'projectId');
     }
 
-    if (taskData.assignedUserId !== undefined && typeof taskData.assignedUserId !== 'number') {
-      throw new ValidationError('Assigned user ID must be a number', 'assignedUserId');
+    if (taskData.assignedUserId !== undefined && typeof taskData.assignedUserId !== 'string') {
+      throw new ValidationError('Assigned user ID must be a string (UUID)', 'assignedUserId');
     }
 
     if (taskData.suggestedPriority !== undefined && taskData.suggestedPriority !== null && !VALID_TASK_PRIORITIES.includes(taskData.suggestedPriority)) {
@@ -154,8 +151,7 @@ export const validateUpdateTask = (req: Request, res: Response, next: NextFuncti
       if (isNaN(date.getTime())) {
         throw new ValidationError('Suggested deadline must be a valid date', 'suggestedDeadline');
       }
-      // Convert to Date object for consistency
-      taskData.suggestedDeadline = date;
+      // Do not assign Date object, just validate
     }
 
     // Validate attachments if present
@@ -198,8 +194,8 @@ export const validateUpdateTask = (req: Request, res: Response, next: NextFuncti
           throw new ValidationError(`Comment ${i + 1}: content is required and must be a string`, 'comments');
         }
 
-        if (!comment.userId || typeof comment.userId !== 'number') {
-          throw new ValidationError(`Comment ${i + 1}: userId is required and must be a number`, 'comments');
+        if (!comment.userId || typeof comment.userId !== 'string') {
+          throw new ValidationError(`Comment ${i + 1}: userId is required and must be a string (UUID)`, 'comments');
         }
       }
     }

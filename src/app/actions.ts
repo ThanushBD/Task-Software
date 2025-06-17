@@ -136,10 +136,7 @@ const AdminCreateTaskFormSchema = z.object({
       return date;
     }),
   priority: z.enum(["Low", "Medium", "High"] as [TaskPriority, ...TaskPriority[]]),
-  assignedUserId: z.coerce.number({
-    required_error: "Assignee is required.",
-    invalid_type_error: "An employee must be assigned."
-  }).min(1, "An employee must be assigned."),
+  assignedUserId: z.string().min(1, "An employee must be assigned."),
   timerDuration: z.string({ required_error: "Timer duration is required." })
     .min(1, "Timer duration is required.")
     .refine(val => {
@@ -186,21 +183,12 @@ export async function adminCreateTaskAction(
 
   const { title, description, deadline, priority, assignedUserId, timerDuration } = validatedFields.data;
 
-  const assignedUserIdNumber = Number(assignedUserId);
-  if (isNaN(assignedUserIdNumber)) {
-    return {
-      success: false,
-      message: "Invalid assigned user ID provided.",
-      errors: { assignedUserId: ["Assigned user ID must be a number."] },
-    };
-  }
-
   console.log("adminCreateTaskAction: assignedUserId from form data:", assignedUserId);
-  console.log("adminCreateTaskAction: Assigned user ID for lookup:", assignedUserIdNumber);
+  console.log("adminCreateTaskAction: Assigned user ID for lookup:", assignedUserId);
 
   const cookieHeader = (await headers()).get("cookie") || undefined;
   const allUsers = await userAPI.getAllUsers(cookieHeader);
-  const assignee = allUsers.find(user => Number(user.id) === assignedUserIdNumber);
+  const assignee = allUsers.find(user => user.id === assignedUserId);
   console.log("adminCreateTaskAction: found assignee:", assignee);
 
   if (!assignee) {
@@ -229,9 +217,9 @@ export async function adminCreateTaskAction(
     progressPercentage: 0,
     projectId: null,
     recurringPattern: null,
-    assignerId: Number(currentUser.id),
-    assignedUserId: Number(assignee.id),
-    updatedBy: Number(currentUser.id),
+    assignerId: currentUser.id,
+    assignedUserId: assignee.id,
+    updatedBy: currentUser.id,
     suggestedPriority: null,
     suggestedDeadline: null,
     createdAt: new Date().toISOString(),
@@ -239,12 +227,12 @@ export async function adminCreateTaskAction(
     completedAt: null,
     softDeletedAt: null,
     assignee: {
-      id: Number(assignee.id),
+      id: assignee.id,
       firstName: assignee.firstName || '',
       lastName: assignee.lastName || '',
     },
     assigner: {
-      id: Number(currentUser.id),
+      id: currentUser.id,
       firstName: currentUser.firstName || '',
       lastName: currentUser.lastName || '',
     },
@@ -325,7 +313,7 @@ export async function createUserTaskAction(
 
   const cookieHeader = (await headers()).get("cookie") || undefined;
   const creatorUser = await userAPI.verifySession(cookieHeader);
-  if (!creatorUser || String(creatorUser.id) !== creatorId) {
+  if (!creatorUser || creatorUser.id !== creatorId) {
     return {
       success: false,
       message: "Unauthorized: Invalid user attempting to create task.",
@@ -353,9 +341,9 @@ export async function createUserTaskAction(
     assignedUserId: null, 
     updatedBy: null,
     assignee: undefined,
-    assignerId: Number(creatorUser.id),
+    assignerId: creatorUser.id,
     assigner: {
-      id: Number(creatorUser.id),
+      id: creatorUser.id,
       firstName: creatorUser.name?.split(' ')[0] || '',
       lastName: creatorUser.name?.split(' ').slice(1).join(' ') || '',
     },
@@ -458,7 +446,7 @@ export async function approveTaskAction(
   const cookieHeader = (await headers()).get("cookie") || undefined;
   const currentUser = await userAPI.verifySession(cookieHeader);
 
-  if (!currentUser || currentUser.role !== 'Admin') {
+  if (!currentUser || currentUser.role !== 'Admin' || currentUser.id !== approverId) {
     return {
       success: false,
       message: "Unauthorized: Only administrators can approve tasks.",
@@ -476,7 +464,7 @@ export async function approveTaskAction(
   }
 
   const allUsers = await userAPI.getAllUsers(cookieHeader);
-  const assignee = assignedUserId ? allUsers.find(user => String(user.id) === assignedUserId) : null;
+  const assignee = assignedUserId ? allUsers.find(user => user.id === assignedUserId) : null;
 
   if (assignedUserId && !assignee) {
     return {
@@ -490,8 +478,8 @@ export async function approveTaskAction(
     status: "In Progress" as TaskStatus,
     priority: priority as TaskPriority,
     deadline: deadline ? new Date(deadline).toISOString() : null,
-    assignedUserId: assignee?.id ? Number(assignee.id) : null,
-    updatedBy: Number(currentUser.id),
+    assignedUserId: assignee?.id || null,
+    updatedBy: currentUser.id,
     updatedAt: new Date().toISOString(),
     timerDuration: Number(timerDuration),
   });
@@ -558,7 +546,7 @@ export async function requestRevisionsAction(
 
   const cookieHeader = (await headers()).get("cookie") || undefined;
   const reviser = await userAPI.verifySession(cookieHeader);
-  if (!reviser || reviser.role !== 'Admin' || String(reviser.id) !== reviserId) {
+  if (!reviser || reviser.role !== 'Admin' || reviser.id !== reviserId) {
     return {
       success: false,
       message: "Unauthorized: Only administrators can request revisions.",
@@ -591,7 +579,7 @@ export async function requestRevisionsAction(
     content: comment,
     createdAt: new Date().toISOString(),
     user: {
-      id: Number(reviser.id),
+      id: reviser.id,
       firstName: reviser.firstName || '',
       lastName: reviser.lastName || '',
     },
@@ -600,7 +588,7 @@ export async function requestRevisionsAction(
   const revisedTask = await updateTask(taskId, {
     status: "Needs Changes" as TaskStatus,
     comments: [...(taskToRevise.comments || []), newCommentEntry],
-    updatedBy: Number(reviser.id),
+    updatedBy: reviser.id,
     updatedAt: new Date().toISOString(),
   });
 
@@ -662,7 +650,7 @@ export async function rejectTaskAction(
 
   const cookieHeader = (await headers()).get("cookie") || undefined;
   const rejecter = await userAPI.verifySession(cookieHeader);
-  if (!rejecter || rejecter.role !== 'Admin' || String(rejecter.id) !== rejecterId) {
+  if (!rejecter || rejecter.role !== 'Admin' || rejecter.id !== rejecterId) {
     return {
       success: false,
       message: "Unauthorized: Only administrators can reject tasks.",
@@ -692,7 +680,7 @@ export async function rejectTaskAction(
 
   const rejectedTask = await updateTask(taskId, {
     status: "Rejected" as TaskStatus,
-    updatedBy: Number(rejecter.id),
+    updatedBy: rejecter.id,
     updatedAt: new Date().toISOString(),
   });
 
@@ -761,7 +749,7 @@ export async function resubmitTaskAction(
 
   const cookieHeader = (await headers()).get("cookie") || undefined;
   const user = await userAPI.verifySession(cookieHeader);
-  if (!user || String(user.id) !== userId) {
+  if (!user || user.id !== userId) {
     return {
       success: false,
       message: "User not found.",
@@ -780,7 +768,7 @@ export async function resubmitTaskAction(
     };
   }
 
-  if (taskToResubmit.assignerId !== Number(user.id)) {
+  if (taskToResubmit.assignerId !== user.id) {
      return {
       success: false,
       message: "Unauthorized: You can only resubmit tasks you created.",
@@ -802,7 +790,7 @@ export async function resubmitTaskAction(
     title,
     description: description || null,
     status: "Pending Approval" as TaskStatus,
-    updatedBy: Number(user.id),
+    updatedBy: user.id,
     updatedAt: new Date().toISOString(),
   });
 
@@ -851,7 +839,7 @@ export async function checkForOverdueTasksAction(
     let overdueTasksFound = 0;
 
     for (const task of overdueTasks) {
-      const manager = allUsers.find(user => String(user.id) === String(task.assignerId));
+      const manager = allUsers.find(user => user.id === task.assignerId);
 
       if (!manager || !manager.email) {
         notificationMessages.push(`Could not find manager email for task "${task.title}" (Assigner ID: ${task.assignerId}). Skipped notification.`);

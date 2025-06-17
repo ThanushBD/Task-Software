@@ -85,6 +85,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
     }
 
     const response: ApiResponse<Task> = {
+      success: true,
       data: task
     };
 
@@ -101,6 +102,7 @@ router.post('/', validateCreateTask, async (req: Request, res: Response, next: N
     const task = await TaskService.createTask(taskData);
     
     const response: ApiResponse<Task> = {
+      success: true,
       data: task,
       message: 'Task created successfully'
     };
@@ -126,6 +128,7 @@ router.put('/:id', validateUpdateTask, async (req: Request, res: Response, next:
     }
 
     const response: ApiResponse<Task> = {
+      success: true,
       data: task,
       message: 'Task updated successfully'
     };
@@ -156,6 +159,7 @@ router.delete('/:id', async (req: Request, res: Response, next: NextFunction) =>
     }
 
     const response: ApiResponse<void> = {
+      success: true,
       message: 'Task deleted successfully'
     };
 

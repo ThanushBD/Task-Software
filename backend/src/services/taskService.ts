@@ -26,7 +26,6 @@ export class TaskService {
           )
         ) as attachments
       FROM task_attachments
-      WHERE soft_deleted_at IS NULL
       GROUP BY task_id
     ),
     task_comments AS (
@@ -46,7 +45,6 @@ export class TaskService {
         ) as comments
       FROM task_comments tc
       JOIN users u ON tc.user_id = u.id
-      WHERE tc.soft_deleted_at IS NULL
       GROUP BY task_id
     )
     SELECT 
@@ -177,8 +175,8 @@ export class TaskService {
           title, description, status, priority, deadline,
           progress_percentage, recurring_pattern,
           assigner_id, assigned_user_id, suggested_priority,
-          suggested_deadline
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          suggested_deadline, timer_duration
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         RETURNING *`,
         [
           taskData.title,
@@ -191,7 +189,8 @@ export class TaskService {
           taskData.assignerId,
           taskData.assignedUserId || null,
           taskData.suggestedPriority || null,
-          taskData.suggestedDeadline || null
+          taskData.suggestedDeadline || null,
+          taskData.timerDuration || 0
         ]
       );
 

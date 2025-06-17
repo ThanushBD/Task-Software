@@ -151,7 +151,7 @@ export function CreateTaskForm({ assignableUsers }: CreateTaskFormProps) {
             <SelectTrigger id="assignedUserId"><SelectValue placeholder="Select employee" /></SelectTrigger>
             <SelectContent>
               {assignableUsers.length === 0 ? (
-                <SelectItem value="" disabled>No users available</SelectItem>
+                <SelectItem value="no-users-available" disabled>No users available</SelectItem>
               ) : (
                 assignableUsers.map(user => (
                   <SelectItem key={user.id} value={String(user.id)}>

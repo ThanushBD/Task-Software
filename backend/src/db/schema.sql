@@ -54,21 +54,41 @@ $$ LANGUAGE plpgsql;
 -- -- TABLES (Idempotent Creation)
 -- =============================================================================
 
+-- Drop all tables that depend on users, then drop users itself (for migration to UUID PK)
+DROP TABLE IF EXISTS projects CASCADE;
+DROP TABLE IF EXISTS tasks CASCADE;
+DROP TABLE IF EXISTS task_comments CASCADE;
+DROP TABLE IF EXISTS task_attachments CASCADE;
+DROP TABLE IF EXISTS notifications CASCADE;
+DROP TABLE IF EXISTS user_sessions CASCADE;
+DROP TABLE IF EXISTS task_activity_log CASCADE;
+DROP TABLE IF EXISTS task_dependencies CASCADE;
+-- Now drop users
+DROP TABLE IF EXISTS users CASCADE;
+
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    email VARCHAR(255) NOT NULL UNIQUE,
+    email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
-    first_name VARCHAR(100),
-    last_name VARCHAR(100),
+    first_name VARCHAR(255),
+    last_name VARCHAR(255),
     role user_role NOT NULL DEFAULT 'User',
-    is_active BOOLEAN DEFAULT TRUE,
-    last_login TIMESTAMPTZ,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    email_verified BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     soft_deleted_at TIMESTAMPTZ,
-    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
-    updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
     CONSTRAINT email_format_check CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$')
+);
+
+CREATE TABLE IF NOT EXISTS projects (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    updated_by UUID REFERENCES users(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS tasks (
@@ -78,19 +98,17 @@ CREATE TABLE IF NOT EXISTS tasks (
     status task_status NOT NULL DEFAULT 'Pending Approval',
     priority task_priority NOT NULL DEFAULT 'Medium',
     deadline TIMESTAMPTZ,
-    assigner_id UUID NOT NULL,
-    assigned_user_id UUID,
-    updated_by UUID,
+    project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+    assigner_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    assigned_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
     suggested_priority task_priority,
     suggested_deadline TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMPTZ,
     soft_deleted_at TIMESTAMPTZ,
-    CONSTRAINT title_not_empty_check CHECK (length(trim(title)) > 0),
-    CONSTRAINT fk_tasks_assigner FOREIGN KEY (assigner_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE RESTRICT,
-    CONSTRAINT fk_tasks_assignee FOREIGN KEY (assigned_user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE SET NULL,
-    CONSTRAINT fk_tasks_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON UPDATE CASCADE ON DELETE SET NULL
+    CONSTRAINT title_not_empty_check CHECK (length(trim(title)) > 0)
 );
 
 CREATE TABLE IF NOT EXISTS task_comments (
@@ -100,18 +118,20 @@ CREATE TABLE IF NOT EXISTS task_comments (
     content TEXT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    soft_deleted_at TIMESTAMPTZ
+    soft_deleted_at TIMESTAMPTZ,
+    CONSTRAINT content_not_empty_check CHECK (length(trim(content)) > 0)
 );
 
 CREATE TABLE IF NOT EXISTS task_attachments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES users(id),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     file_name VARCHAR(255) NOT NULL,
-    file_url VARCHAR(1024) NOT NULL,
+    file_path TEXT NOT NULL,
     file_type VARCHAR(100),
-    file_size_bytes BIGINT,
+    file_size INTEGER,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     soft_deleted_at TIMESTAMPTZ
 );
 
@@ -138,7 +158,8 @@ CREATE TABLE IF NOT EXISTS notifications (
     type notification_type NOT NULL,
     message TEXT NOT NULL,
     is_read BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS user_sessions (
@@ -146,7 +167,8 @@ CREATE TABLE IF NOT EXISTS user_sessions (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     token VARCHAR(255) NOT NULL UNIQUE,
     expires_at TIMESTAMPTZ NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 -- =============================================================================

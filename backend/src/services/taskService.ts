@@ -19,9 +19,9 @@ export class TaskService {
           jsonb_build_object(
             'id', id,
             'fileName', file_name,
-            'fileUrl', file_url,
+            'fileUrl', file_path,
             'fileType', file_type,
-            'fileSizeBytes', file_size_bytes,
+            'fileSizeBytes', file_size,
             'createdAt', created_at
           )
         ) as attachments
@@ -178,7 +178,7 @@ export class TaskService {
           progress_percentage, recurring_pattern,
           assigner_id, assigned_user_id, suggested_priority,
           suggested_deadline
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         RETURNING *`,
         [
           taskData.title,
@@ -200,7 +200,7 @@ export class TaskService {
       // Insert attachments if any
       if (taskData.attachments && taskData.attachments.length > 0) {
         const attachmentValues = taskData.attachments.map(attachment => 
-          `($1, $2, $3, $4, $5, $6, $7)`
+          `($1, $2, $3, $4, $5, $6)`
         ).join(',');
         
         const attachmentParams = taskData.attachments.flatMap(attachment => [
@@ -209,13 +209,12 @@ export class TaskService {
           attachment.fileName,
           attachment.fileUrl,
           attachment.fileType || null,
-          attachment.fileSizeBytes,
-          attachment.checksum
+          attachment.fileSizeBytes
         ]);
 
         await client.query(
           `INSERT INTO task_attachments (
-            task_id, user_id, file_name, file_url, file_type, file_size_bytes, checksum
+            task_id, user_id, file_name, file_path, file_type, file_size
           ) VALUES ${attachmentValues}`,
           attachmentParams
         );
@@ -304,15 +303,14 @@ export class TaskService {
         // Insert new attachments
         for (const attachment of taskData.attachments) {
           const result = await client.query(
-            'INSERT INTO task_attachments (task_id, user_id, file_name, file_url, file_type, file_size_bytes, checksum) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+            'INSERT INTO task_attachments (task_id, user_id, file_name, file_path, file_type, file_size) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
             [
               id,
               attachment.userId,
               attachment.fileName,
               attachment.fileUrl,
               attachment.fileType,
-              attachment.fileSizeBytes,
-              attachment.checksum
+              attachment.fileSizeBytes
             ]
           );
         }
@@ -357,10 +355,10 @@ export class TaskService {
 
   private static async insertAttachments(client: PoolClient, taskId: string, attachments: Omit<TaskAttachment, 'id' | 'createdAt'>[]): Promise<void> {
     /**
-     * FIXED: Corrected column names to match the schema (`file_url`, `file_size_bytes`).
+     * FIXED: Corrected column names to match the schema (`file_path`, `file_size`).
      */
     const attachmentQuery = `
-      INSERT INTO task_attachments (task_id, user_id, file_name, file_url, file_type, file_size_bytes)
+      INSERT INTO task_attachments (task_id, user_id, file_name, file_path, file_type, file_size)
       VALUES ($1, $2, $3, $4, $5, $6)
     `;
 

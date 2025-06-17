@@ -20,7 +20,7 @@ console.log('DB_NAME:', process.env.DB_NAME);
 console.log('DB_USER:', process.env.DB_USER);
 console.log('DB_PASSWORD:', process.env.DB_PASSWORD ? '***HIDDEN***' : 'NOT SET');
 const app = express();
-const port = process.env.PORT || 5000;
+const port = process.env.PORT || 9002;
 const isDevelopment = process.env.NODE_ENV !== 'production';
 
 // Declare server variable at module level

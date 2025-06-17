@@ -88,19 +88,20 @@ router.post('/register', async (req: express.Request, res: express.Response) => 
       throw new ValidationError('Invalid role. Must be one of: Admin, User');
     }
 
-    // Create user
+    // Create user with UUID
+    const userId = uuidv4();
     const result = await client.query(
       `INSERT INTO users (
-        email, password_hash, first_name, last_name, role,
+        id, email, password_hash, first_name, last_name, role,
         is_active, email_verified, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, true, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ) VALUES ($1, $2, $3, $4, $5, $6, true, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       RETURNING id, email, first_name, last_name, role`,
-      [email, hashedPassword, firstName, lastName, normalizedRole]
+      [userId, email, hashedPassword, firstName, lastName, normalizedRole]
     );
 
     const user = result.rows[0];
 
-    // Generate JWT token
+    // Generate JWT token with UUID
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
       JWT_SECRET,
@@ -210,7 +211,7 @@ router.get('/me', authenticateToken, async (req: AuthenticatedRequest, res: expr
       `SELECT id, email, first_name, last_name, role, is_active, email_verified
        FROM users
        WHERE id = $1 AND soft_deleted_at IS NULL`,
-      [parseInt(req.user.id)]
+      [req.user.id]
     );
 
     if (result.rows.length === 0) {

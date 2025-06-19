@@ -1,4 +1,4 @@
-"use client"; // Required to use useAuth hook
+"use client"; 
 
 import { Header } from "@/components/layout/header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";

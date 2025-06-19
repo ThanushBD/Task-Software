@@ -117,5 +117,48 @@ export const userAPI = {
       console.error('Session verification failed:', error);
       return null;
     }
-  }
-}; 
+  },
+
+  // Verify email code
+  async verifyEmailCode(code: string): Promise<{ success: boolean }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/verify-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Added credentials
+        body: JSON.stringify({ code }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to verify email code: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error verifying email code:', error);
+      throw error;
+    }
+  },
+
+  // Resend verification email (Fixed endpoint path)
+  async resendVerificationEmail(): Promise<void> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/resend-verification-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Added credentials
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to resend verification email: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error('Error resending verification email:', error);
+      throw error;
+    }
+  },
+};

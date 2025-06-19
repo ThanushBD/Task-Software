@@ -3,7 +3,7 @@
 import type { User, UserRole } from '@/types';
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { userAPI } from '@/lib/auth-api'; // Import userAPI from the new file
+import { userAPI } from '@/lib/auth-api';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -13,11 +13,11 @@ interface AuthContextType {
   signup: (name: string, email: string, role: UserRole, password?: string) => Promise<boolean>;
   allUsers: User[];
   refreshUsers: () => Promise<void>;
+  verifyEmail: (code: string) => Promise<boolean>;
+  resendVerificationEmail: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-// Removed API_BASE_URL and userAPI definition from here
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -35,13 +35,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const sessionUser = await userAPI.verifySession();
         if (sessionUser) {
           setCurrentUser(sessionUser);
+          // Only load users if we have a valid session
+          await refreshUsers();
         }
         
-        // Load all users for dropdowns/selection
-        await refreshUsers();
-        
       } catch (error) {
-        console.error('Failed to initialize auth:', error);
+        console.log('Failed to initialize auth (normal if not logged in):', error);
         // Don't set error state here, just log it
       } finally {
         setLoading(false);
@@ -70,9 +69,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       setCurrentUser(user);
       
-      // If using JWT tokens, store in httpOnly cookie (handled by server)
-      // or handle token storage as needed for your auth strategy
-      
       // Refresh users list after successful login
       await refreshUsers();
       
@@ -95,6 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     
     setCurrentUser(null);
+    setAllUsers([]);
     router.push('/login');
   };
 
@@ -117,6 +114,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const verifyEmail = async (code: string): Promise<boolean> => {
+    try {
+      const response = await userAPI.verifyEmailCode(code);
+      return response.success;
+    } catch (error) {
+      console.error('Email verification failed:', error);
+      return false;
+    }
+  };
+  
+  const resendVerificationEmail = async (): Promise<void> => {
+    try {
+      await userAPI.resendVerificationEmail();
+    } catch (error) {
+      console.error('Failed to resend verification email:', error);
+      throw error;
+    }
+  };
+
   const value = {
     currentUser,
     loading,
@@ -125,11 +141,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signup,
     allUsers,
     refreshUsers,
+    verifyEmail, 
+    resendVerificationEmail, 
   };
 
   return (
     <AuthContext.Provider value={value}>
-      {!loading && children}
+      {children}
     </AuthContext.Provider>
   );
 }

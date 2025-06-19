@@ -1,6 +1,6 @@
 "use client";
 
-import type { Task } from '@/types';
+import type { Task, TaskStatus } from '@/types';
 import { fetchTasks, createTask, updateTask, deleteTask } from '@/lib/api';
 import React, {
   createContext,
@@ -12,7 +12,8 @@ import React, {
   useMemo,
 } from 'react';
 
-interface TaskContextType {
+// 1. ADD `updateTaskStatus` to the context type definition
+export interface TaskContextType {
   tasks: Task[];
   isLoadingTasks: boolean;
   error: string | null;
@@ -27,6 +28,7 @@ interface TaskContextType {
   addTask: (task: Omit<Task, 'id'>) => Promise<void>;
   updateTask: (id: string, updates: Partial<Task>) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
+  updateTaskStatus: (taskId: number, newStatus: TaskStatus) => Promise<void>; // Added this line
   refreshTasks: (params?: {
     page?: number;
     limit?: number;
@@ -77,13 +79,13 @@ export function TaskProvider({ children }: { children: ReactNode }) {
 
   const addTask = useCallback(async (newTask: Omit<Task, 'id'>) => {
     try {
-      const created = await createTask(newTask); // This is where the API call is made
+      const created = await createTask(newTask);
       setTasks(prev => [created, ...prev]);
       setError(null);
     } catch (err) {
-      setError('Failed to create task'); // Sets an error message in the context
+      setError('Failed to create task');
       console.error('Error creating task:', err);
-      throw err; // Re-throws the error for the calling component
+      throw err;
     }
   }, []);
 
@@ -111,6 +113,27 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // 2. DEFINE the `updateTaskStatus` function, integrating with your existing API logic
+  const updateTaskStatus = useCallback(async (taskId: number, newStatus: TaskStatus) => {
+    // Optimistically update the UI for a responsive feel
+    setTasks(prevTasks => prevTasks.map(task =>
+      task.id === taskId.toString() ? { ...task, status: newStatus } : task
+    ));
+    
+    try {
+      // Call your existing API update function
+      await updateTask(taskId.toString(), { status: newStatus });
+       setError(null);
+    } catch (err) {
+        setError('Failed to update task status. Reverting change.');
+        console.error('Error updating task status:', err);
+        // If the API call fails, revert the optimistic update
+        loadTasks(); // The simplest way to revert is to refetch the source of truth
+        throw err;
+    }
+  }, [updateTask, loadTasks]); // `updateTask` is your API call from `lib/api`, which should be stable
+
+  // 3. PROVIDE the new function in the context value
   const contextValue = useMemo(
     () => ({
       tasks,
@@ -120,9 +143,10 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       addTask,
       updateTask: updateTaskById,
       deleteTask: deleteTaskById,
+      updateTaskStatus, // Add the new function here
       refreshTasks: loadTasks,
     }),
-    [tasks, pagination, isLoadingTasks, error, addTask, updateTaskById, deleteTaskById, loadTasks]
+    [tasks, pagination, isLoadingTasks, error, addTask, updateTaskById, deleteTaskById, updateTaskStatus, loadTasks]
   );
 
   return <TaskContext.Provider value={contextValue}>{children}</TaskContext.Provider>;

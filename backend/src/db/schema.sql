@@ -175,6 +175,16 @@ CREATE TABLE IF NOT EXISTS user_sessions (
 );
 
 -- =============================================================================
+-- -- EMAIL VERIFICATION CODES TABLE
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS email_verification_codes (
+    email VARCHAR(255) PRIMARY KEY,
+    code VARCHAR(10) NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL
+);
+
+-- =============================================================================
 -- -- INDEXES (Idempotent Creation)
 -- =============================================================================
 

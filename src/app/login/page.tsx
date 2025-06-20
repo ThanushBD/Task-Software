@@ -188,7 +188,7 @@ export default function EnhancedLoginPage() {
       // Simulate biometric authentication
       await new Promise(resolve => setTimeout(resolve, 2000));
       setSuccess(true);
-      setTimeout(() => router.push('/'), 1000);
+      setTimeout(() => router.push('/dashboard'), 1000);
     } catch (error) {
       setError('Biometric authentication failed. Please try again.');
     } finally {
@@ -202,7 +202,7 @@ export default function EnhancedLoginPage() {
       // Simulate social login
       await new Promise(resolve => setTimeout(resolve, 2000));
       setSuccess(true);
-      setTimeout(() => router.push('/'), 1000);
+      setTimeout(() => router.push('/dashboard'), 1000);
     } catch (error) {
       setError(`${provider} login failed. Please try again.`);
     } finally {
@@ -250,7 +250,7 @@ export default function EnhancedLoginPage() {
           localStorage.removeItem('loginForm');
         }
         setTimeout(() => {
-          router.push('/');
+          router.push('/dashboard');
         }, 1000);
       } else {
         const newAttemptCount = attemptCount + 1;

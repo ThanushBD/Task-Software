@@ -339,7 +339,7 @@ export default function EnhancedSignupPage() {
         setSuccess(true);
         setEmailVerificationSent(true);
         localStorage.removeItem('signupForm');
-        
+        localStorage.setItem('pendingVerificationEmail', email);
         setTimeout(() => {
           router.push('/verify-email');
         }, 3000);

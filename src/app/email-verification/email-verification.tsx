@@ -129,14 +129,23 @@ function VerifyEmailContent() {
     inputRefs.current[0]?.focus();
   }, []);
 
+  useEffect(() => {
+    if (success) {
+      const timeout = setTimeout(() => {
+        router.push('/dashboard');
+      }, 1500);
+      return () => clearTimeout(timeout);
+    }
+  }, [success, router]);
+
   const handleCodeChange = (index: number, value: string) => {
     if (value.length > 1) {
       // Handle pasted content
-      const pastedCode = value.slice(0, 6).split('');
+      const pastedCode = value.slice(0, 6).toUpperCase().split('');
       const newCode = [...verificationCode];
-      pastedCode.forEach((digit, i) => {
-        if (i < 6 && /^\d$/.test(digit)) {
-          newCode[i] = digit;
+      pastedCode.forEach((char, i) => {
+        if (i < 6 && /^[A-Z0-9]$/.test(char)) {
+          newCode[i] = char;
         }
       });
       setVerificationCode(newCode);
@@ -148,15 +157,17 @@ function VerifyEmailContent() {
       return;
     }
 
-    if (/^\d?$/.test(value)) {
+    // Accept only alphanumeric, auto-uppercase
+    const char = value.toUpperCase();
+    if (/^[A-Z0-9]?$/.test(char)) {
       const newCode = [...verificationCode];
-      newCode[index] = value;
+      newCode[index] = char;
       setVerificationCode(newCode);
       setAutoSubmitted(false);
       setError(null);
 
       // Auto-advance to next field
-      if (value && index < 5) {
+      if (char && index < 5) {
         inputRefs.current[index + 1]?.focus();
       }
     }
@@ -288,13 +299,63 @@ function VerifyEmailContent() {
     );
   }
 
+  // Modern, styled code entry UI
   return (
     <div className={`min-h-screen transition-colors duration-300 ${
       darkMode
         ? 'bg-gradient-to-br from-gray-900 via-blue-900 to-indigo-900'
         : 'bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50'
     } flex items-center justify-center p-4`}>
-      {/* Your UI code */}
+      <Card className={`w-full max-w-md shadow-2xl backdrop-blur-sm border-0 relative transition-all duration-300 ${
+        darkMode ? 'bg-gray-800/90 text-white' : 'bg-white/80'
+      }`}>
+        <CardHeader className="text-center pb-4">
+          <div className="inline-flex justify-center items-center mb-4 relative">
+            <div className="absolute inset-0 bg-blue-500 rounded-full animate-ping opacity-20"></div>
+            <div className="relative bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full p-3">
+              <Mail className="h-8 w-8 text-white" />
+            </div>
+          </div>
+          <CardTitle className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+            Verify Your Email
+          </CardTitle>
+          <CardDescription className={`mt-2 ${darkMode ? 'text-gray-300' : 'text-slate-600'}`}>Enter the 6-digit code sent to <span className="font-semibold">{maskEmail(userEmail)}</span></CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <form onSubmit={e => { e.preventDefault(); handleVerification(); }} className="flex flex-col items-center space-y-4">
+            <div className="flex space-x-2 justify-center">
+              {verificationCode.map((digit, idx) => (
+                <Input
+                  key={idx}
+                  type="text"
+                  inputMode="text"
+                  maxLength={1}
+                  value={digit}
+                  onChange={e => handleCodeChange(idx, e.target.value)}
+                  onKeyDown={e => handleKeyDown(e, idx)}
+                  ref={el => { inputRefs.current[idx] = el; }}
+                  className="w-12 h-12 text-center text-2xl font-mono border-2 border-blue-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-150 uppercase"
+                  disabled={loading || isLocked}
+                  autoFocus={idx === 0}
+                  style={{ textTransform: 'uppercase' }}
+                />
+              ))}
+            </div>
+            <Button type="submit" disabled={loading || isLocked || verificationCode.some(d => !d)} className="w-full mt-4">
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Verify'}
+            </Button>
+            {error && <Alert variant="destructive" className="w-full mt-2"><AlertCircle className="h-4 w-4" /><AlertDescription>{error}</AlertDescription></Alert>}
+            {success && <Alert variant="default" className="w-full mt-2"><CheckCircle className="h-4 w-4" /><AlertDescription>Email verified successfully!</AlertDescription></Alert>}
+          </form>
+          <Separator className="my-4" />
+          <div className="flex flex-col items-center space-y-2">
+            <span className="text-sm">Didn't receive the code?</span>
+            <Button variant="outline" onClick={handleResendCode} disabled={resendLoading || resendCooldown > 0} className="w-full">
+              {resendLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}Resend Code{resendCooldown > 0 && ` (${resendCooldown}s)`}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

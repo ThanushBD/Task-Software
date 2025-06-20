@@ -6,34 +6,36 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/a
 // API functions for user management
 export const userAPI = {
   // Get all users
-  async getAllUsers(cookieHeader?: string): Promise<User[]> {
+  async getAllUsers(tokenOrCookie?: string): Promise<User[]> {
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
     };
 
-    // Always send JWT if present
-    const token = localStorage.getItem('token');
+    // Only use localStorage if in the browser
+    let token: string | null = null;
+    if (typeof window !== 'undefined') {
+      token = localStorage.getItem('token');
+    } else if (tokenOrCookie) {
+      // On the server, accept token or cookieHeader
+      if (tokenOrCookie.startsWith('Bearer ')) {
+        headers['Authorization'] = tokenOrCookie;
+      } else {
+        headers['Cookie'] = tokenOrCookie;
+      }
+    }
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
     console.debug('[getAllUsers] headers:', headers);
 
-    if (cookieHeader) {
-      headers['Cookie'] = cookieHeader;
-    }
-
     const response = await fetch(`${API_BASE_URL}/auth/users`, {
       method: 'GET',
       headers: headers,
-      // credentials: 'include', // Only needed for cookie-based auth
     });
-    
     if (!response.ok) {
       throw new Error(`Failed to fetch users: ${response.statusText}`);
     }
-    
     const users = await response.json();
-    // Transform snake_case to camelCase for firstName and lastName
     return users.map((user: any) => ({
       ...user,
       firstName: user.first_name,
@@ -41,11 +43,14 @@ export const userAPI = {
     }));
   },
 
-  // Helper to get token from localStorage
+  // Helper to get token from localStorage (browser only)
   getToken() {
-    const token = localStorage.getItem('token');
-    console.debug('[auth-api] getToken:', token);
-    return token;
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('token');
+      console.debug('[auth-api] getToken:', token);
+      return token;
+    }
+    return null;
   },
 
   // Login user
@@ -64,6 +69,7 @@ export const userAPI = {
     }
     
     const result = await response.json();
+    console.log('Login result:', result);
     if (result.token) {
       localStorage.setItem('token', result.token);
       console.debug('[auth-api] Stored token after login:', result.token);
@@ -89,11 +95,13 @@ export const userAPI = {
     
     if (response.ok) {
       const result = await response.json();
-      if (result.token) {
-        localStorage.setItem('token', result.token);
-        console.debug('[auth-api] Stored token after register:', result.token);
+      console.log('Register result:', result);
+      const token = result.token || result.data?.token;
+      if (token) {
+        localStorage.setItem('token', token);
+        console.debug('[auth-api] Stored token after register:', token);
       }
-      return { success: true, user: result.data?.user, token: result.token };
+      return { success: true, user: result.data?.user, token };
     } else {
       let errorMsg = 'Registration failed';
       try {
@@ -147,17 +155,20 @@ export const userAPI = {
     }
   },
 
-  // Verify current session
-  async verifySession(): Promise<User | null> {
+  // Verify current session (browser or server)
+  async verifySession(token?: string): Promise<User | null> {
     try {
       const headers: HeadersInit = {
         'Content-Type': 'application/json',
       };
-
-      // Get JWT from localStorage (or sessionStorage)
-      const token = this.getToken();
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+      // Use provided token (server) or get from localStorage (browser)
+      let jwt: string | undefined = token;
+      if (!jwt) {
+        const t = this.getToken();
+        jwt = t === null ? undefined : t;
+      }
+      if (jwt) {
+        headers['Authorization'] = `Bearer ${jwt}`;
       }
       console.debug('[auth-api] verifySession headers:', headers);
 

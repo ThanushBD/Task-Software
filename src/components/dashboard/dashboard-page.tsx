@@ -338,7 +338,7 @@ const FilterControls = memo(({
 FilterControls.displayName = "FilterControls";
 
 export function DashboardPage() {
-  const { currentUser, allUsers } = useAuth();
+  const { currentUser, allUsers, loading } = useAuth();
   const { tasks, isLoadingTasks, updateTaskStatus } = useTasks();
   const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'board'>('list');
@@ -346,18 +346,40 @@ export function DashboardPage() {
   // Ensure consistent type handling for user ID comparisons
   const currentUserId = currentUser?.id ? Number(currentUser.id) : null;
 
+  // Add loading state check
+  if (loading) {
+    return (
+      <div className="p-4 md:p-6">
+        <div className="flex justify-center items-center h-64">
+          <span className="text-muted-foreground text-lg">Loading dashboard...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentUserId) {
+    return (
+      <div className="p-4 md:p-6">
+        <Alert>
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            Please log in to view your dashboard.
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
   const myTasks = useMemo(() => {
     if (!currentUserId) return [];
-    
     return tasks.filter((task: Task) => {
       const assignedUserId = task.assignedUserId ? Number(task.assignedUserId) : null;
       const assignerId = task.assignerId ? Number(task.assignerId) : null;
-      
-      const isAssignedToMe = assignedUserId === currentUserId && 
-        ['To Do', 'In Progress', 'Overdue', 'Completed'].includes(task.status);
+      // Show all tasks assigned to the user, regardless of status
+      const isAssignedToMe = assignedUserId === currentUserId;
+      // Still show tasks created by me that need action
       const isMyCreatedTaskNeedingAction = assignerId === currentUserId && 
         ['Pending Approval', 'Needs Changes', 'Rejected'].includes(task.status);
-      
       return isAssignedToMe || isMyCreatedTaskNeedingAction;
     });
   }, [tasks, currentUserId]);
@@ -427,19 +449,6 @@ export function DashboardPage() {
           ))}
         </div>
         <Skeleton className="h-64 w-full" />
-      </div>
-    );
-  }
-
-  if (!currentUserId) {
-    return (
-      <div className="p-4 md:p-6">
-        <Alert>
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>
-            Please log in to view your dashboard.
-          </AlertDescription>
-        </Alert>
       </div>
     );
   }

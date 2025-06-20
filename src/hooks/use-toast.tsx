@@ -664,7 +664,7 @@ function ToastComponent(toast: ToastProps) {
             </div>
           )}
           {toast.description && (
-            <div className={cn("text-sm opacity-90", toast.title ? "mt-1" : "")}>
+            <div className={cn("text-sm opacity-90", toast.title ? "mt-1" : "")}> 
               {toast.description}
             </div>
           )}

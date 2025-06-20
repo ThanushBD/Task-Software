@@ -105,15 +105,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Initialize auth state on mount
   useEffect(() => {
+    console.log('[AuthProvider] authState:', authState);
+  }, [authState]);
+
+  useEffect(() => {
     let mounted = true;
 
     async function initializeAuth() {
       try {
         setAuthState(prev => ({ ...prev, loading: true, error: null }));
-        
         // Check if user has an active session
         const sessionUser = await userAPI.verifySession();
-        
+        console.log('[AuthProvider] verifySession result:', sessionUser);
         if (mounted && sessionUser) {
           const now = new Date();
           setAuthState(prev => ({
@@ -123,12 +126,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             lastActivity: now,
             sessionExpiry: new Date(now.getTime() + SESSION_TIMEOUT),
           }));
-          
           // Load all users if we have a valid session
           await refreshUsers();
         }
       } catch (error) {
-        console.log('Failed to initialize auth (normal if not logged in):', error);
+        console.log('[AuthProvider] Failed to initialize auth:', error);
         if (mounted) {
           setAuthState(prev => ({
             ...prev,
@@ -143,12 +145,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
     }
-    
     initializeAuth();
-    
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, []);
 
   // Session management
@@ -231,13 +229,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthState(prev => ({ ...prev, loading: true, error: null }));
     try {
       const result = await userAPI.loginUser(email, password);
+      console.log('[AuthProvider] login result:', result);
       if (result.token) {
         localStorage.setItem('token', result.token);
         console.debug('[auth-context] Token set after login:', result.token);
       }
       console.debug('[auth-context] Calling refreshUsers after login');
       await refreshUsers();
-      setAuthState(prev => ({ ...prev, loading: false, error: null }));
+      setAuthState(prev => ({
+        ...prev,
+        currentUser: result.user || null,
+        isAuthenticated: true,
+        loading: false,
+        error: null,
+      }));
       return { success: true, user: result.user };
     } catch (error: any) {
       console.error('Login failed:', error);
@@ -286,9 +291,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Signup method
   const signup = useCallback(async (name: string, email: string, role: UserRole, password?: string) => {
-    setAuthState(prev => ({ ...prev, loading: true, error: null, shouldPromptLogin: false }));
+    setAuthState(prev => ({ ...prev, loading: true, error: null }));
     try {
       const result = await userAPI.registerUser(name, email, role, password);
+      console.log('[AuthProvider] signup result:', result);
       if (result.success) {
         // Ensure token is set before calling refreshUsers
         if (result.token) {
@@ -297,7 +303,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         console.debug('[auth-context] Calling refreshUsers after signup');
         await refreshUsers();
-        setAuthState(prev => ({ ...prev, loading: false, error: null, shouldPromptLogin: false }));
+        setAuthState(prev => ({
+          ...prev,
+          currentUser: result.user || null,
+          isAuthenticated: true,
+          loading: false,
+          error: null,
+          shouldPromptLogin: false
+        }));
         return { success: true, user: result.user };
       } else {
         // Handle specific error for already registered email

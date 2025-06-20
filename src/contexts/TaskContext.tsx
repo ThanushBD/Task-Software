@@ -595,6 +595,12 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     retryLastOperation,
   ]);
 
+  useEffect(() => {
+    console.log('[TaskProvider] tasks:', tasks);
+    console.log('[TaskProvider] isLoadingTasks:', isLoadingTasks);
+    if (error) console.log('[TaskProvider] error:', error);
+  }, [tasks, isLoadingTasks, error]);
+
   return <TaskContext.Provider value={contextValue}>{children}</TaskContext.Provider>;
 }
 

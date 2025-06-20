@@ -226,9 +226,12 @@ router.post('/logout', (req, res) => {
 
 // GET /api/auth/me
 router.get('/me', async (req, res) => {
-  // Try to get JWT from Authorization header
+  // Try to get JWT from Authorization header or cookie
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  let token = authHeader && authHeader.split(' ')[1];
+  if (!token && req.cookies?.token) {
+    token = req.cookies.token;
+  }
   if (!token) {
     return res.status(401).json({ success: false, error: 'Not authenticated' });
   }
@@ -267,42 +270,82 @@ router.get('/users', authenticateToken, async (req: express.Request, res: expres
   }
 });
 
-// Route to send or resend verification code
+// Route to send or resend verification code (DB version, with rate limiting and alphanumeric code)
 router.post('/send-verification-email', async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ success: false, error: 'Email required' });
 
-  // Generate a 6-digit code
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
-  verificationCodes[email] = code;
-
+  const client = await pool.connect();
   try {
+    // Check for recent code
+    const recent = await client.query(
+      'SELECT expires_at FROM email_verification_codes WHERE email = $1',
+      [email]
+    );
+    if (recent.rows.length > 0) {
+      // Calculate when the last code was sent
+      const expiresAt = new Date(recent.rows[0].expires_at);
+      const lastSent = new Date(expiresAt.getTime() - 10 * 60 * 1000); // 10 min window
+      if (Date.now() - lastSent.getTime() < 60 * 1000) { // 1 minute
+        return res.status(429).json({ success: false, error: 'Please wait at least 1 minute before requesting another code.' });
+      }
+    }
+
+    // Generate a secure alphanumeric code
+    const code = Math.random().toString(36).substring(2, 8).toUpperCase(); // e.g., 'A1B2C3'
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
+
+    // Upsert code and expiration
+    await client.query(
+      `INSERT INTO email_verification_codes (email, code, expires_at)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (email) DO UPDATE SET code = $2, expires_at = $3`,
+      [email, code, expiresAt]
+    );
     await sendVerificationEmail(email, code);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ success: false, error: 'Failed to send email' });
+    console.error('[SEND VERIFICATION EMAIL] Error:', err);
+    res.status(500).json({ success: false, error: 'Failed to send verification email' });
+  } finally {
+    client.release();
   }
 });
 
-// Route to verify code
+// Route to verify code (DB version)
 router.post('/verify-email', async (req, res) => {
   const { email, code } = req.body;
   if (!email || !code) return res.status(400).json({ success: false, error: 'Email and code required' });
 
-  if (verificationCodes[email] === code) {
-    // Mark user as verified in DB
-    const client = await pool.connect();
-    try {
-      await client.query('UPDATE users SET email_verified = true WHERE email = $1', [email]);
-      delete verificationCodes[email];
-      res.json({ success: true });
-    } catch (err) {
-      res.status(500).json({ success: false, error: 'Failed to update user' });
-    } finally {
-      client.release();
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      'SELECT code, expires_at FROM email_verification_codes WHERE email = $1',
+      [email]
+    );
+    if (result.rows.length === 0) {
+      console.log('[VERIFY EMAIL] No code found for email:', email);
+      return res.status(400).json({ success: false, error: 'No code found for this email' });
     }
-  } else {
-    res.status(400).json({ success: false, error: 'Invalid or expired code' });
+    const { code: storedCode, expires_at } = result.rows[0];
+    if (storedCode !== code) {
+      console.log('[VERIFY EMAIL] Invalid code:', { email, code, storedCode });
+      return res.status(400).json({ success: false, error: 'Invalid code' });
+    }
+    if (new Date() > new Date(expires_at)) {
+      console.log('[VERIFY EMAIL] Code expired:', { email, code, expires_at });
+      return res.status(400).json({ success: false, error: 'Code expired' });
+    }
+    // Mark user as verified
+    await client.query('UPDATE users SET email_verified = true WHERE email = $1', [email]);
+    // Delete the code after successful verification
+    await client.query('DELETE FROM email_verification_codes WHERE email = $1', [email]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[VERIFY EMAIL] Error:', err);
+    res.status(500).json({ success: false, error: 'Failed to verify email code' });
+  } finally {
+    client.release();
   }
 });
 

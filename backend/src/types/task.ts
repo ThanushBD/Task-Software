@@ -1,6 +1,6 @@
 // types/task.ts
-export type TaskStatus = 'Pending Approval' | 'To Do' | 'In Progress' | 'In Review' | 'Needs Changes' | 'Completed' | 'Rejected' | 'Archived';
-export type TaskPriority = 'Low' | 'Medium' | 'High' | 'Urgent';
+export type TaskStatus = 'To Do' | 'In Progress' | 'Completed' | 'Overdue' | 'Pending Approval' | 'Needs Changes' | 'Rejected';
+export type TaskPriority = 'Low' | 'Medium' | 'High';
 
 export interface TaskAttachment {
   id: string;
@@ -25,6 +25,30 @@ export interface TaskComment {
   updatedAt: Date;
   softDeletedAt: Date | null;
   userName: string;
+  timestamp: string; 
+  userIdString: string; // For compatibility with frontend
+  userFirstName: string;
+  userLastName: string;
+  userAvatarUrl: string | null;
+  userFullName: string;
+  userInitials: string;
+  userEmail: string;
+  userRole: string;
+  userDepartment: string | null;
+  userPosition: string | null;
+  userTimezone: string | null;
+  userPhone: string | null;
+  userLinkedIn: string | null;
+  userGitHub: string | null;
+  userTwitter: string | null;
+  userWebsite: string | null;
+  userBio: string | null;
+  userLocation: string | null;
+  userPronouns: string | null;
+  userSkills: string[] | null;
+  userInterests: string[] | null;
+  comment: string;
+  
 }
 
 export interface Task {

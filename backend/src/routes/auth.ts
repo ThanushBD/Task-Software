@@ -6,11 +6,36 @@ import { v4 as uuidv4 } from 'uuid';
 import { User, UserRole } from '../types';
 import { pool } from '../config/db';
 import { ValidationError } from '../utils/validationError';
+import nodemailer from 'nodemailer';
 
 const router = express.Router();
 
 // JWT secret (use environment variable in production)
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+
+// In-memory store for demo; use DB or Redis in production!
+const verificationCodes: Record<string, string> = {};
+
+// Helper to send email (configure SMTP in your .env)
+async function sendVerificationEmail(email: string, code: string) {
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: parseInt(process.env.SMTP_PORT || '587'),
+    secure: false,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+  });
+
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM || 'Task App <no-reply@taskapp.com>',
+    to: email,
+    subject: 'Your Verification Code',
+    text: `Your verification code is: ${code}`,
+    html: `<p>Your verification code is: <b>${code}</b></p>`,
+  });
+}
 
 // Add type for authenticated request
 interface AuthenticatedRequest extends express.Request {
@@ -189,8 +214,6 @@ router.post('/login', async (req, res) => {
   }
 });
 
-
-
 // POST /api/auth/logout
 router.post('/logout', (req, res) => {
   res.clearCookie('token', {
@@ -202,42 +225,29 @@ router.post('/logout', (req, res) => {
 });
 
 // GET /api/auth/me
-router.get('/me', authenticateToken, async (req: AuthenticatedRequest, res: express.Response) => {
-  const client = await pool.connect();
+router.get('/me', async (req, res) => {
+  // Try to get JWT from Authorization header
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  if (!token) {
+    return res.status(401).json({ success: false, error: 'Not authenticated' });
+  }
   try {
-    if (!req.user?.id) {
-      return res.status(401).json({ success: false, error: 'Not authenticated' });
-    }
-
-    const result = await client.query(
-      `SELECT id, email, first_name, last_name, role, is_active, email_verified
-       FROM users
-       WHERE id = $1 AND soft_deleted_at IS NULL`,
-      [req.user.id]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'User not found' });
-    }
-
-    const user = result.rows[0];
-    res.json({
-      success: true,
-      data: {
-        id: user.id,
-        email: user.email,
-        firstName: user.first_name,
-        lastName: user.last_name,
-        role: user.role,
-        isActive: user.is_active,
-        emailVerified: user.email_verified
+    const decoded: any = jwt.verify(token, JWT_SECRET);
+    const userId = decoded.id;
+    const client = await pool.connect();
+    try {
+      const result = await client.query('SELECT * FROM users WHERE id = $1', [userId]);
+      if (result.rows.length === 0) {
+        return res.status(404).json({ success: false, error: 'User not found' });
       }
-    });
-  } catch (error) {
-    console.error('Error fetching user:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch user data' });
-  } finally {
-    client.release();
+      const user = result.rows[0];
+      res.json({ success: true, data: user });
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    res.status(401).json({ success: false, error: 'Invalid token' });
   }
 });
 
@@ -254,6 +264,45 @@ router.get('/users', authenticateToken, async (req: express.Request, res: expres
     res.status(500).json({ error: 'Internal server error' });
   } finally {
     client.release();
+  }
+});
+
+// Route to send or resend verification code
+router.post('/send-verification-email', async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ success: false, error: 'Email required' });
+
+  // Generate a 6-digit code
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  verificationCodes[email] = code;
+
+  try {
+    await sendVerificationEmail(email, code);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'Failed to send email' });
+  }
+});
+
+// Route to verify code
+router.post('/verify-email', async (req, res) => {
+  const { email, code } = req.body;
+  if (!email || !code) return res.status(400).json({ success: false, error: 'Email and code required' });
+
+  if (verificationCodes[email] === code) {
+    // Mark user as verified in DB
+    const client = await pool.connect();
+    try {
+      await client.query('UPDATE users SET email_verified = true WHERE email = $1', [email]);
+      delete verificationCodes[email];
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ success: false, error: 'Failed to update user' });
+    } finally {
+      client.release();
+    }
+  } else {
+    res.status(400).json({ success: false, error: 'Invalid or expired code' });
   }
 });
 

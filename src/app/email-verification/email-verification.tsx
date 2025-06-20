@@ -70,6 +70,14 @@ function VerifyEmailContent() {
     setUserEmail(emailFromParams || emailFromStorage || '');
   }, [searchParams]);
 
+  // Auto-send verification email on first load if userEmail is present
+  useEffect(() => {
+    if (userEmail) {
+      resendVerificationEmail(userEmail);
+    }
+    // eslint-disable-next-line
+  }, [userEmail]);
+
   // Monitor online status
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -187,45 +195,26 @@ function VerifyEmailContent() {
     setError(null);
 
     try {
-      // Simulate verification API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Mock verification logic (in production, this would be a real API call)
-      const isValidCode = code === '123456' || Math.random() > 0.3; // 70% success rate for demo
-
-      if (isValidCode) {
+      // Use real API call for verification
+      const result = await verifyEmail(userEmail, code);
+      if (result) {
         setSuccess(true);
         localStorage.removeItem('pendingVerificationEmail');
-
-        // Store verification success
-        localStorage.setItem('emailVerified', 'true');
-
-        setTimeout(() => {
-          router.push('/login?verified=true');
-        }, 2000);
+        // Store verification success, redirect, or show message as needed
       } else {
-        const newAttemptsRemaining = attemptsRemaining - 1;
-        setAttemptsRemaining(newAttemptsRemaining);
-
-        if (newAttemptsRemaining <= 0) {
+        setError('Invalid or expired verification code.');
+        setAttemptsRemaining(attemptsRemaining - 1);
+        if (attemptsRemaining - 1 <= 0) {
           setIsLocked(true);
-          setLockoutTime(300); // 5 minutes lockout
-          setError('Too many failed verification attempts. Account temporarily locked for 5 minutes.');
-        } else {
-          setError(`Invalid verification code. ${newAttemptsRemaining} attempts remaining.`);
+          setLockoutTime(60); // 1 minute lockout
         }
-
-        // Clear the code
-        setVerificationCode(['', '', '', '', '', '']);
-        setAutoSubmitted(false);
-        inputRefs.current[0]?.focus();
       }
-    } catch (error) {
+    } catch (err) {
       setError('Verification failed. Please try again.');
-      console.error('Verification error:', error);
+    } finally {
+      setLoading(false);
+      setAutoSubmitted(false);
     }
-
-    setLoading(false);
   };
 
   const handleResendCode = async () => {
@@ -244,17 +233,9 @@ function VerifyEmailContent() {
 
     try {
       // Simulate resend API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      setResendCooldown(60); // 60 second cooldown
+      await resendVerificationEmail(userEmail);
+      setResendCooldown(30);
       setLastResendTime(Date.now());
-      setAttemptsRemaining(5); // Reset attempts on resend
-      setVerificationCode(['', '', '', '', '', '']);
-      setAutoSubmitted(false);
-
-      // Show success message
-      setError(null);
-      inputRefs.current[0]?.focus();
 
     } catch (error) {
       setError('Failed to resend verification code. Please try again.');
@@ -291,6 +272,21 @@ function VerifyEmailContent() {
       : '*'.repeat(username.length);
     return `${maskedUsername}@${domain}`;
   };
+
+  // Show message if no email is found
+  if (!userEmail) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen">
+        <Alert variant="destructive" className="max-w-md">
+          <AlertCircle className="h-5 w-5" />
+          <AlertTitle>No email found for verification</AlertTitle>
+          <AlertDescription>
+            Please sign up first. <Link href="/signup" className="text-purple-600 underline">Go to Signup</Link>
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
 
   return (
     <div className={`min-h-screen transition-colors duration-300 ${

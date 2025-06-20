@@ -1,4 +1,3 @@
-// CORRECTED: Full corrected code for api.ts
 import { Task, User } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
@@ -36,6 +35,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
   return data.data;
 }
 
+// Updated interface to include signal parameter
 export async function fetchTasks(params?: {
   page?: number;
   limit?: number;
@@ -45,14 +45,26 @@ export async function fetchTasks(params?: {
   priority?: string;
   assigneeId?: number;
   assignerId?: number;
+  signal?: AbortSignal; // Added signal parameter
 }): Promise<PaginatedResponse<Task>> {
   const queryParams = new URLSearchParams();
+  
   if (params) {
-    Object.entries(params).forEach(([key, value]) => {
+    // Extract signal separately to avoid adding it to URL params
+    const { signal, ...urlParams } = params;
+    
+    Object.entries(urlParams).forEach(([key, value]) => {
       if (value !== undefined) {
         queryParams.append(key, value.toString());
       }
     });
+
+    const response = await fetch(`${API_BASE_URL}/tasks?${queryParams.toString()}`, {
+      credentials: 'include',
+      signal: signal, // Use the signal for abort capability
+    });
+
+    return handleResponse<PaginatedResponse<Task>>(response);
   }
 
   const response = await fetch(`${API_BASE_URL}/tasks?${queryParams.toString()}`, {
@@ -63,12 +75,14 @@ export async function fetchTasks(params?: {
 }
 
 export async function fetchTaskById(id: string): Promise<Task> {
-  const response = await fetch(`${API_BASE_URL}/tasks/${id}`);
+  const response = await fetch(`${API_BASE_URL}/tasks/${id}`, {
+    credentials: 'include',
+  });
   return handleResponse<Task>(response);
 }
 
 export async function createTask(task: Omit<Task, 'id'>): Promise<Task> {
-  // CORRECTED: Added robust date validation to prevent crashes from empty strings
+  // Robust date validation to prevent crashes from empty strings
   const taskToSend = {
     ...task,
     deadline: task.deadline && new Date(task.deadline).getTime() ? new Date(task.deadline).toISOString() : null,
@@ -111,4 +125,18 @@ export async function deleteTask(id: string): Promise<void> {
   });
 
   await handleResponse<void>(response);
+}
+
+// Add task comment API function
+export async function addTaskComment(taskId: string, content: string): Promise<Task> {
+  const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/comments`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify({ content }),
+  });
+
+  return handleResponse<Task>(response);
 }

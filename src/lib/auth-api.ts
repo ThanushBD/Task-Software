@@ -11,6 +11,13 @@ export const userAPI = {
       'Content-Type': 'application/json',
     };
 
+    // Always send JWT if present
+    const token = localStorage.getItem('token');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    console.debug('[getAllUsers] headers:', headers);
+
     if (cookieHeader) {
       headers['Cookie'] = cookieHeader;
     }
@@ -18,7 +25,7 @@ export const userAPI = {
     const response = await fetch(`${API_BASE_URL}/auth/users`, {
       method: 'GET',
       headers: headers,
-      credentials: 'include',
+      // credentials: 'include', // Only needed for cookie-based auth
     });
     
     if (!response.ok) {
@@ -32,6 +39,13 @@ export const userAPI = {
       firstName: user.first_name,
       lastName: user.last_name,
     }));
+  },
+
+  // Helper to get token from localStorage
+  getToken() {
+    const token = localStorage.getItem('token');
+    console.debug('[auth-api] getToken:', token);
+    return token;
   },
 
   // Login user
@@ -49,11 +63,16 @@ export const userAPI = {
       throw new Error(`Login failed: ${response.statusText}`);
     }
     
-    return response.json();
+    const result = await response.json();
+    if (result.token) {
+      localStorage.setItem('token', result.token);
+      console.debug('[auth-api] Stored token after login:', result.token);
+    }
+    return result;
   },
 
   // Register new user
-  async registerUser(name: string, email: string, role: UserRole, password?: string): Promise<{ user: User; token?: string }> {
+  async registerUser(name: string, email: string, role: UserRole, password?: string): Promise<{ success: boolean; user?: User; error?: string; token?: string }> {
     // Split name into firstName and lastName
     const nameParts = name.trim().split(' ');
     const firstName = nameParts[0];
@@ -68,8 +87,41 @@ export const userAPI = {
       body: JSON.stringify({ firstName, lastName, email, role, password }),
     });
     
+    if (response.ok) {
+      const result = await response.json();
+      if (result.token) {
+        localStorage.setItem('token', result.token);
+        console.debug('[auth-api] Stored token after register:', result.token);
+      }
+      return { success: true, user: result.data?.user, token: result.token };
+    } else {
+      let errorMsg = 'Registration failed';
+      try {
+        const errorData = await response.json();
+        errorMsg = errorData.error || errorMsg;
+      } catch {}
+      return { success: false, error: errorMsg };
+    }
+  },
+
+  // Update user profile - ADDED MISSING METHOD
+  async updateProfile(userId: string, updates: Partial<User>): Promise<User> {
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    const token = this.getToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const response = await fetch(`${API_BASE_URL}/auth/users/${userId}`, {
+      method: 'PUT',
+      headers: headers,
+      credentials: 'include',
+      body: JSON.stringify(updates),
+    });
+    
     if (!response.ok) {
-      throw new Error(`Registration failed: ${response.statusText}`);
+      throw new Error(`Profile update failed: ${response.statusText}`);
     }
     
     return response.json();
@@ -77,11 +129,16 @@ export const userAPI = {
 
   // Logout user
   async logoutUser(): Promise<void> {
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    const token = this.getToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
     const response = await fetch(`${API_BASE_URL}/auth/logout`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: headers,
       credentials: 'include',
     });
     
@@ -91,20 +148,22 @@ export const userAPI = {
   },
 
   // Verify current session
-  async verifySession(cookieHeader?: string): Promise<User | null> {
+  async verifySession(): Promise<User | null> {
     try {
       const headers: HeadersInit = {
         'Content-Type': 'application/json',
       };
 
-      if (cookieHeader) {
-        headers['Cookie'] = cookieHeader;
+      // Get JWT from localStorage (or sessionStorage)
+      const token = this.getToken();
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
       }
+      console.debug('[auth-api] verifySession headers:', headers);
 
       const response = await fetch(`${API_BASE_URL}/auth/me`, {
         method: 'GET',
         headers: headers,
-        credentials: 'include',
       });
       
       if (!response.ok) {
@@ -120,15 +179,20 @@ export const userAPI = {
   },
 
   // Verify email code
-  async verifyEmailCode(code: string): Promise<{ success: boolean }> {
+  async verifyEmailCode(email: string, code: string): Promise<{ success: boolean }> {
     try {
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      };
+      const token = this.getToken();
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
       const response = await fetch(`${API_BASE_URL}/auth/verify-email`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include', // Added credentials
-        body: JSON.stringify({ code }),
+        headers: headers,
+        credentials: 'include',
+        body: JSON.stringify({ email, code }),
       });
 
       if (!response.ok) {
@@ -142,23 +206,33 @@ export const userAPI = {
     }
   },
 
-  // Resend verification email (Fixed endpoint path)
-  async resendVerificationEmail(): Promise<void> {
+  // Send verification email
+  async sendVerificationEmail(email: string): Promise<void> {
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/resend-verification-email`, {
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      };
+      const token = this.getToken();
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const response = await fetch(`${API_BASE_URL}/auth/send-verification-email`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include', // Added credentials
+        headers: headers,
+        credentials: 'include',
+        body: JSON.stringify({ email }),
       });
-
       if (!response.ok) {
-        throw new Error(`Failed to resend verification email: ${response.statusText}`);
+        throw new Error(`Failed to send verification email: ${response.statusText}`);
       }
     } catch (error) {
-      console.error('Error resending verification email:', error);
+      console.error('Error sending verification email:', error);
       throw error;
     }
+  },
+
+  // Resend verification email (for backward compatibility)
+  async resendVerificationEmail(email: string): Promise<void> {
+    return this.sendVerificationEmail(email);
   },
 };

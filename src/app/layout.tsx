@@ -1,9 +1,9 @@
-
 import type { Metadata } from 'next';
 import './globals.css';
 import { ThemeProvider } from '@/components/layout/theme-provider';
 import { AuthProvider } from '@/contexts/auth-context';
 import { TaskProvider } from '@/contexts/TaskContext'; // Import TaskProvider
+import { ToastProvider } from '@/hooks/use-toast';
 
 export const metadata: Metadata = {
   title: 'TaskZen',
@@ -24,15 +24,17 @@ export default function RootLayout({
       </head>
       <body className="font-body antialiased min-h-screen bg-background text-foreground">
         <AuthProvider>
-          <TaskProvider> {/* Wrap ThemeProvider and children with TaskProvider */}
-            <ThemeProvider
-              attribute="class"
-              defaultTheme="system"
-              enableSystem
-              disableTransitionOnChange
-            >
-              {children}
-            </ThemeProvider>
+          <TaskProvider>
+            <ToastProvider>
+              <ThemeProvider
+                attribute="class"
+                defaultTheme="system"
+                enableSystem
+                disableTransitionOnChange
+              >
+                {children}
+              </ThemeProvider>
+            </ToastProvider>
           </TaskProvider>
         </AuthProvider>
       </body>

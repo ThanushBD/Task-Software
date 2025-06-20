@@ -1,13 +1,18 @@
-export type TaskStatus = "To Do" | "In Progress" | "Completed" | "Overdue" | "Pending Approval" | "Needs Changes" | "Rejected";
-
+export type TaskStatus = 
+  | 'To Do' 
+  | 'In Progress' 
+  | 'Completed'  
+  | 'Overdue' 
+  | 'Pending Approval' 
+  | 'Needs Changes' 
+  | 'Rejected';
 export type TaskPriority = "Low" | "Medium" | "High";
 
 export interface ConceptualFileAttachment {
-  id: string; // Simple ID for key in lists
+  id: string;
   name: string;
-  type?: string; // e.g., 'image/png', 'application/pdf'
-  size?: number; // in bytes
-  // url?: string; // Would be populated if real files were uploaded
+  type?: string;
+  size?: number;
 }
 
 export interface TaskAttachment {
@@ -22,7 +27,10 @@ export interface TaskAttachment {
 export interface TaskComment {
   id: string;
   content: string;
+  timestamp: string; 
   createdAt: string;
+  userName: string; 
+  comment: string; 
   user: {
     id: string;
     firstName: string;
@@ -50,7 +58,8 @@ export interface Task {
   completedAt: string | null;
   softDeletedAt: string | null;
   timerDuration: number;
-  // Nested objects from joins
+  assigneeName?: string; 
+  assignerName?: string; 
   assignee?: {
     id: string;
     firstName: string;
@@ -76,4 +85,19 @@ export interface User {
   name?: string;
   role: UserRole;
   password?: string;
+}
+
+// Search configuration interface
+export interface SearchConfig {
+  searchInTitle: boolean;
+  searchInDescription: boolean;
+  searchInComments: boolean;
+}
+
+// Theme context type
+export interface ExtendedThemeContextType {
+  theme: string;
+  setTheme: (theme: string) => void;
+  config: any;
+  setConfig: (config: any) => void;
 }

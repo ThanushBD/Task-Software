@@ -78,7 +78,7 @@ export default function EnhancedSignupPage() {
   const [passwordError, setPasswordError] = useState('');
   const [confirmPasswordError, setConfirmPasswordError] = useState('');
   
-  // Password strength
+  // Password
   const [passwordStrength, setPasswordStrength] = useState<PasswordStrength>({
     score: 0,
     feedback: [],
@@ -86,7 +86,7 @@ export default function EnhancedSignupPage() {
     percentage: 0
   });
 
-  const { signup } = useAuth();
+  const { signup, shouldPromptLogin } = useAuth();
   const router = useRouter();
   const nameRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
@@ -529,6 +529,18 @@ export default function EnhancedSignupPage() {
                 <AlertTitle>Signup Failed</AlertTitle>
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
+            )}
+            {shouldPromptLogin && (
+              <div className="flex flex-col items-center space-y-2 my-4">
+                <p className="text-purple-700 font-semibold">Already registered? Log in to your account:</p>
+                <Button
+                  variant="outline"
+                  className="border-purple-500 text-purple-700 hover:bg-purple-50 font-bold px-6 py-3"
+                  onClick={() => router.push('/login')}
+                >
+                  Go to Login
+                </Button>
+              </div>
             )}
 
             {success && (

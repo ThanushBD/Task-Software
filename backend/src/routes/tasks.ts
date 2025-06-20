@@ -28,40 +28,12 @@ const handleError = (error: Error, req: Request, res: Response, next: NextFuncti
 // Get all tasks with pagination and filtering
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const params: PaginationParams = {
-      page: parseInt(req.query.page as string) || 1,
-      limit: parseInt(req.query.limit as string) || 10,
-      sortBy: (req.query.sortBy as string) || 'created_at',
-      sortOrder: (req.query.sortOrder as 'asc' | 'desc') || 'desc',
-      status: req.query.status as TaskStatus | undefined,
-      priority: req.query.priority as TaskPriority | undefined,
-      assigneeId: req.query.assigneeId ? parseInt(req.query.assigneeId as string) : undefined,
-      assignerId: req.query.assignerId ? parseInt(req.query.assignerId as string) : undefined
-    };
-
-    const result = await TaskService.getAllTasks(params);
-    
-    res.json({
-      success: true,
-      data: {
-        tasks: result.tasks,
-        pagination: {
-          total: result.total,
-          page: result.page,
-          limit: result.limit,
-          totalPages: Math.ceil(result.total / result.limit),
-          hasNextPage: result.page < Math.ceil(result.total / result.limit),
-          hasPrevPage: result.page > 1
-        }
-      }
-    });
+    // TEMP: Use a minimal query to diagnose DB timeout
+    const result = await require('../config/db').pool.query('SELECT id, title FROM tasks LIMIT 5');
+    res.json({ success: true, data: { tasks: result.rows, pagination: {} } });
   } catch (error) {
     console.error('Error fetching tasks:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Failed to fetch tasks',
-      message: error instanceof Error ? error.message : 'An unexpected error occurred'
-    });
+    res.status(500).json({ success: false, error: 'Failed to fetch tasks' });
   }
 });
 

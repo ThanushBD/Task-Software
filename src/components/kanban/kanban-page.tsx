@@ -1,4 +1,3 @@
-
 "use client";
 
 import { TASK_STATUSES } from '@/lib/constants';
@@ -30,7 +29,7 @@ export function KanbanPage() {
 
   const filteredTasks = tasks.filter(task =>
     task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    task.description.toLowerCase().includes(searchTerm.toLowerCase())
+    (task.description ?? '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (

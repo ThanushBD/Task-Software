@@ -137,7 +137,7 @@ router.post('/register', async (req: express.Request, res: express.Response) => 
       success: true,
       data: {
         user: {
-          id: user.id,
+          id: String(user.id),
           email: user.email,
           firstName: user.first_name,
           lastName: user.last_name,
@@ -204,7 +204,16 @@ router.post('/login', async (req, res) => {
 
     // Return user without password
     const { password_hash, ...userWithoutPassword } = user;
-    res.json({ user: userWithoutPassword, token });
+    res.json({
+      user: {
+        id: String(userWithoutPassword.id),
+        email: userWithoutPassword.email,
+        firstName: userWithoutPassword.first_name,
+        lastName: userWithoutPassword.last_name,
+        role: userWithoutPassword.role
+      },
+      token
+    });
 
   } catch (error) {
     console.error('Login error:', error);

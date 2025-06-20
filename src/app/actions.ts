@@ -1642,14 +1642,13 @@ export async function requestRevisionsAction(
   }
 
   const newCommentEntry: TaskComment = {
-    id: `comment-${Date.now()}`,
+    id: `comment-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
     content: comment,
     createdAt: new Date().toISOString(),
-    user: {
-      id: reviser.id,
-      firstName: reviser.firstName || '',
-      lastName: reviser.lastName || '',
-    },
+    user: { id: reviser.id, firstName: reviser.firstName, lastName: reviser.lastName },
+    timestamp: new Date().toISOString(),
+    userName: reviser.firstName + ' ' + reviser.lastName,
+    comment: comment || '',
   };
 
   const revisedTask = await updateTask(taskId, {
